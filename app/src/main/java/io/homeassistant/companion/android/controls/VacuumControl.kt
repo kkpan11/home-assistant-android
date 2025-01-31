@@ -9,10 +9,10 @@ import android.service.controls.actions.ControlAction
 import android.service.controls.templates.ControlButton
 import android.service.controls.templates.ToggleTemplate
 import androidx.annotation.RequiresApi
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.integration.IntegrationRepository
-import io.homeassistant.companion.android.common.data.websocket.impl.entities.AreaRegistryResponse
-import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.data.integration.isActive
 
 @RequiresApi(Build.VERSION_CODES.R)
 object VacuumControl : HaControl {
@@ -23,33 +23,14 @@ object VacuumControl : HaControl {
         context: Context,
         control: Control.StatefulBuilder,
         entity: Entity<Map<String, Any>>,
-        area: AreaRegistryResponse?,
-        baseUrl: String?
+        info: HaControlInfo
     ): Control.StatefulBuilder {
         entitySupportedFeatures = entity.attributes["supported_features"] as Int
-        if (entitySupportedFeatures and SUPPORT_TURN_ON != SUPPORT_TURN_ON) {
-            control.setStatusText(
-                when (entity.state) {
-                    "cleaning" -> context.getString(commonR.string.state_cleaning)
-                    "docked" -> context.getString(commonR.string.state_docked)
-                    "error" -> context.getString(commonR.string.state_error)
-                    "idle" -> context.getString(commonR.string.state_idle)
-                    "paused" -> context.getString(commonR.string.state_paused)
-                    "returning" -> context.getString(commonR.string.state_returning)
-                    "unavailable" -> context.getString(commonR.string.state_unavailable)
-                    else -> context.getString(commonR.string.state_unknown)
-                }
-            )
-        }
         control.setControlTemplate(
             ToggleTemplate(
                 entity.entityId,
                 ControlButton(
-                    if (entitySupportedFeatures and SUPPORT_TURN_ON == SUPPORT_TURN_ON) {
-                        entity.state == "on"
-                    } else {
-                        entity.state == "cleaning"
-                    },
+                    entity.isActive(),
                     "Description"
                 )
             )
@@ -67,7 +48,7 @@ object VacuumControl : HaControl {
         integrationRepository: IntegrationRepository,
         action: ControlAction
     ): Boolean {
-        integrationRepository.callService(
+        integrationRepository.callAction(
             action.templateId.split(".")[0],
             if (entitySupportedFeatures and SUPPORT_TURN_ON == SUPPORT_TURN_ON) {
                 if ((action as? BooleanAction)?.newState == true) "turn_on" else "turn_off"

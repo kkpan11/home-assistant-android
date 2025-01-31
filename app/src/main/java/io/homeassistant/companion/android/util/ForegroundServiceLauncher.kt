@@ -33,7 +33,9 @@ class ForegroundServiceLauncher(private val serviceClass: Class<out Service>) {
         } else {
             if (restartInProcess) {
                 Log.w(TAG, "Cannot start service ${serviceClass.simpleName}. Service currently restarting...")
-            } else if (isRunning) Log.w(TAG, "Cannot start service ${serviceClass.simpleName}. Service is not running...")
+            } else {
+                Log.w(TAG, "Cannot start service ${serviceClass.simpleName}. Service is not running...")
+            }
         }
     }
 
@@ -43,7 +45,9 @@ class ForegroundServiceLauncher(private val serviceClass: Class<out Service>) {
             shouldStop = true
             if (restartInProcess) {
                 Log.d(TAG, "Stop service ${serviceClass.simpleName}. Service currently restarting. Stopping service after it is restarted.")
-            } else if (isStarting) Log.d(TAG, "Stop service ${serviceClass.simpleName}. Service is currently starting. Stopping service after it is started.")
+            } else {
+                Log.d(TAG, "Stop service ${serviceClass.simpleName}. Service is currently starting. Stopping service after it is started.")
+            }
         } else if (isRunning) {
             context.stopService(Intent(context, serviceClass))
             Log.d(TAG, "Stop service ${serviceClass.simpleName}")
@@ -76,7 +80,9 @@ class ForegroundServiceLauncher(private val serviceClass: Class<out Service>) {
         } else {
             if (restartInProcess) {
                 Log.w(TAG, "Cannot restart service ${serviceClass.simpleName}. Service currently restarting...")
-            } else if (isStarting) Log.w(TAG, "Cannot restart service ${serviceClass.simpleName}. Service is currently starting...")
+            } else {
+                Log.w(TAG, "Cannot restart service ${serviceClass.simpleName}. Service is currently starting...")
+            }
         }
     }
 
@@ -97,9 +103,9 @@ class ForegroundServiceLauncher(private val serviceClass: Class<out Service>) {
     }
 
     @Synchronized
-    fun onServiceCreated(service: Service, id: Int, notification: Notification) {
+    fun onServiceCreated(service: Service, id: Int, notification: Notification, foregroundServiceType: Int) {
         // Make sure to call the startForeground method as fast as possible
-        service.startForeground(id, notification)
+        ServiceCompat.startForeground(service, id, notification, foregroundServiceType)
         isStarting = false
         isRunning = true
         restartInProcess = false

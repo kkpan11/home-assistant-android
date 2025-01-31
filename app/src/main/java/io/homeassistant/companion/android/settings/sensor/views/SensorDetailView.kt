@@ -27,11 +27,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.Card
 import androidx.compose.material.Checkbox
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.ContentAlpha
 import androidx.compose.material.Divider
 import androidx.compose.material.LocalContentAlpha
 import androidx.compose.material.MaterialTheme
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.RadioButton
 import androidx.compose.material.Scaffold
 import androidx.compose.material.SnackbarResult
@@ -39,6 +39,7 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Switch
 import androidx.compose.material.SwitchDefaults
 import androidx.compose.material.Text
+import androidx.compose.material.TextField
 import androidx.compose.material.contentColorFor
 import androidx.compose.material.rememberScaffoldState
 import androidx.compose.runtime.Composable
@@ -50,7 +51,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.ColorFilter
@@ -69,17 +69,18 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.compose.Image
 import com.mikepenz.iconics.typeface.library.community.material.CommunityMaterial
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.sensors.SensorManager
 import io.homeassistant.companion.android.database.sensor.SensorSetting
 import io.homeassistant.companion.android.database.sensor.SensorSettingType
 import io.homeassistant.companion.android.database.sensor.SensorWithAttributes
 import io.homeassistant.companion.android.database.settings.SensorUpdateFrequencySetting
+import io.homeassistant.companion.android.sensors.HealthConnectSensorManager
 import io.homeassistant.companion.android.settings.sensor.SensorDetailViewModel
 import io.homeassistant.companion.android.util.compose.MdcAlertDialog
 import io.homeassistant.companion.android.util.compose.TransparentChip
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import io.homeassistant.companion.android.common.R as commonR
 
 @Composable
 fun SensorDetailView(
@@ -93,10 +94,13 @@ fun SensorDetailView(
     var sensorUpdateTypeInfo by remember { mutableStateOf(false) }
     val jsonMapper by lazy { jacksonObjectMapper() }
 
-    val sensorEnabled = viewModel.sensor?.sensor?.enabled
-        ?: (
-            viewModel.basicSensor != null && viewModel.basicSensor.enabledByDefault && viewModel.sensorManager?.checkPermission(context, viewModel.basicSensor.id) == true
-            )
+    var sensorEnabled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        sensorEnabled = viewModel.sensor?.sensor?.enabled
+            ?: (
+                viewModel.basicSensor != null && viewModel.basicSensor.enabledByDefault && viewModel.sensorManager?.checkPermission(context, viewModel.basicSensor.id) == true
+                )
+    }
 
     val scaffoldState = rememberScaffoldState()
     LaunchedEffect("snackbar") {
@@ -107,7 +111,13 @@ fun SensorDetailView(
             ).let { result ->
                 if (result == SnackbarResult.ActionPerformed) {
                     if (it.actionOpensSettings) {
-                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                        if (viewModel.sensorId.startsWith("health_connect")) {
+                            HealthConnectSensorManager.getPermissionIntent()?.let { intent ->
+                                context.startActivity(intent)
+                            }
+                        } else {
+                            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                        }
                     } else {
                         onSetEnabled(true, it.serverId)
                     }
@@ -157,6 +167,7 @@ fun SensorDetailView(
                         text = stringResource(
                             when (viewModel.basicSensor.updateType) {
                                 SensorManager.BasicSensor.UpdateType.INTENT -> commonR.string.sensor_update_type_chip_intent
+                                SensorManager.BasicSensor.UpdateType.INTENT_ONLY -> commonR.string.sensor_update_type_chip_intent_only
                                 SensorManager.BasicSensor.UpdateType.WORKER -> {
                                     when (viewModel.settingUpdateFrequency) {
                                         SensorUpdateFrequencySetting.FAST_ALWAYS -> commonR.string.sensor_update_type_chip_worker_fast_always
@@ -281,7 +292,9 @@ fun SensorDetailTopPanel(
                         }
                         val mdiIcon = try {
                             IconicsDrawable(context, "cmd-${iconToUse.split(":")[1]}").icon
-                        } catch (e: Exception) { null }
+                        } catch (e: Exception) {
+                            null
+                        }
 
                         if (mdiIcon != null) {
                             Image(
@@ -312,7 +325,7 @@ fun SensorDetailTopPanel(
                                     if (sensor.state.isBlank()) {
                                         stringResource(commonR.string.enabled)
                                     } else {
-                                        if (sensor.unitOfMeasurement.isNullOrBlank()) {
+                                        if (sensor.unitOfMeasurement.isNullOrBlank() || sensor.state.toDoubleOrNull() == null) {
                                             sensor.state
                                         } else {
                                             "${sensor.state} ${sensor.unitOfMeasurement}"
@@ -473,7 +486,6 @@ fun SensorDetailRow(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SensorDetailSettingDialog(
     viewModel: SensorDetailViewModel,
@@ -483,14 +495,23 @@ fun SensorDetailSettingDialog(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val listSettingDialog = state.setting.valueType.listType
-    val inputValue = remember { mutableStateOf(state.setting.value) }
-    val checkedValue = remember { mutableStateListOf<String>().also { it.addAll(state.entriesSelected) } }
+    val inputValue = remember(state.loading) { mutableStateOf(state.setting.value) }
+    val checkedValue = remember(state.loading) { mutableStateListOf<String>().also { it.addAll(state.entriesSelected) } }
 
     MdcAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(viewModel.getSettingTranslatedTitle(state.setting.name)) },
         content = {
-            if (listSettingDialog) {
+            if (state.loading) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (listSettingDialog) {
                 LazyColumn {
                     items(state.entries, key = { (id) -> id }) { (id, entry) ->
                         SensorDetailSettingRow(
@@ -511,7 +532,7 @@ fun SensorDetailSettingDialog(
                     }
                 }
             } else {
-                OutlinedTextField(
+                TextField(
                     value = inputValue.value,
                     keyboardOptions = KeyboardOptions(
                         imeAction = ImeAction.Done,
@@ -529,16 +550,18 @@ fun SensorDetailSettingDialog(
             }
         },
         onCancel = onDismiss,
-        onSave = if (state.setting.valueType != SensorSettingType.LIST) {
+        onSave = if (state.loading) {
+            null
+        } else if (state.setting.valueType != SensorSettingType.LIST) {
             {
                 if (listSettingDialog) {
                     inputValue.value = checkedValue.joinToString().replace("[", "").replace("]", "")
                 }
                 onSubmit(state.copy().apply { setting.value = inputValue.value })
             }
-        } else {
+        } else { // list is saved when selecting a value
             null
-        }, // list is saved when selecting a value
+        },
         contentPadding = if (listSettingDialog) PaddingValues(all = 0.dp) else PaddingValues(horizontal = 24.dp)
     )
 }
@@ -556,6 +579,9 @@ fun SensorDetailUpdateInfoDialog(
         content = {
             var infoString = when (basicSensor.updateType) {
                 SensorManager.BasicSensor.UpdateType.INTENT -> stringResource(commonR.string.sensor_update_type_info_intent)
+                SensorManager.BasicSensor.UpdateType.INTENT_ONLY -> {
+                    "${stringResource(commonR.string.sensor_update_type_info_intent)}\n\n${stringResource(commonR.string.sensor_update_type_info_intent_only)}"
+                }
                 SensorManager.BasicSensor.UpdateType.WORKER -> {
                     "${stringResource(
                         when (userSetting) {

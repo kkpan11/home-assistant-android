@@ -7,9 +7,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
+import androidx.compose.material.TextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.runtime.Composable
@@ -28,8 +28,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import io.homeassistant.companion.android.common.R as commonR
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -47,14 +47,14 @@ fun ExternalUrlInputView(
     Column(
         modifier = Modifier.padding(horizontal = 16.dp)
     ) {
-        OutlinedTextField(
+        TextField(
             value = urlInput ?: "",
             singleLine = true,
             onValueChange = {
                 urlInput = it
                 urlError = false
             },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, autoCorrect = false, keyboardType = KeyboardType.Uri),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, autoCorrectEnabled = false, keyboardType = KeyboardType.Uri),
             keyboardActions = KeyboardActions(
                 onDone = {
                     urlError = !performUrlUpdate(urlInput?.trim(), url, onSaveUrl)

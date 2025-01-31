@@ -8,17 +8,18 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
+import androidx.core.content.IntentCompat
 import dagger.hilt.android.AndroidEntryPoint
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.util.cancel
 import io.homeassistant.companion.android.database.notification.NotificationDao
 import io.homeassistant.companion.android.notifications.MessagingManager.Companion.KEY_TEXT_REPLY
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
 
 @AndroidEntryPoint
 class NotificationActionReceiver : BroadcastReceiver() {
@@ -44,8 +45,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
     lateinit var notificationDao: NotificationDao
 
     override fun onReceive(context: Context, intent: Intent) {
-        val notificationAction =
-            intent.getParcelableExtra<NotificationAction>(EXTRA_NOTIFICATION_ACTION)
+        val notificationAction = IntentCompat.getParcelableExtra(intent, EXTRA_NOTIFICATION_ACTION, NotificationAction::class.java)
 
         if (notificationAction == null) {
             Log.e(TAG, "Failed to get notification action.")
@@ -56,7 +56,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val messageId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
         val databaseId = intent.getLongExtra(EXTRA_NOTIFICATION_DB, 0)
 
-        val isReply = notificationAction.key == "REPLY"
+        val isReply = notificationAction.key == "REPLY" || notificationAction.behavior?.lowercase() == "textinput"
         var replyText: String? = null
 
         val onComplete: () -> Unit = {

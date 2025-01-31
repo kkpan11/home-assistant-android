@@ -7,11 +7,13 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import io.homeassistant.companion.android.database.authentication.AuthenticationDao
+import io.homeassistant.companion.android.database.location.LocationHistoryDao
 import io.homeassistant.companion.android.database.notification.NotificationDao
 import io.homeassistant.companion.android.database.qs.TileDao
 import io.homeassistant.companion.android.database.sensor.SensorDao
 import io.homeassistant.companion.android.database.server.ServerDao
 import io.homeassistant.companion.android.database.settings.SettingsDao
+import io.homeassistant.companion.android.database.wear.CameraTileDao
 import io.homeassistant.companion.android.database.wear.EntityStateComplicationsDao
 import io.homeassistant.companion.android.database.wear.FavoriteCachesDao
 import io.homeassistant.companion.android.database.wear.FavoritesDao
@@ -55,6 +57,9 @@ object DatabaseModule {
         database.templateWidgetDao()
 
     @Provides
+    fun provideLocationHistoryDao(database: AppDatabase): LocationHistoryDao = database.locationHistoryDao()
+
+    @Provides
     fun provideNotificationDao(database: AppDatabase): NotificationDao = database.notificationDao()
 
     @Provides
@@ -71,6 +76,9 @@ object DatabaseModule {
 
     @Provides
     fun provideSettingsDao(database: AppDatabase): SettingsDao = database.settingsDao()
+
+    @Provides
+    fun provideCameraTileDao(database: AppDatabase): CameraTileDao = database.cameraTileDao()
 
     @Provides
     fun provideEntityStateComplicationsDao(database: AppDatabase): EntityStateComplicationsDao = database.entityStateComplicationsDao()

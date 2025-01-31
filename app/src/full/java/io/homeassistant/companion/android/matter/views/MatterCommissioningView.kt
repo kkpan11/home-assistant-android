@@ -32,15 +32,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
-import com.google.accompanist.themeadapter.material.MdcTheme
 import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.database.server.Server
 import io.homeassistant.companion.android.database.server.ServerConnectionInfo
 import io.homeassistant.companion.android.database.server.ServerSessionInfo
 import io.homeassistant.companion.android.database.server.ServerUserInfo
 import io.homeassistant.companion.android.matter.MatterCommissioningViewModel.CommissioningFlowStep
+import io.homeassistant.companion.android.util.compose.HomeAssistantAppTheme
+import io.homeassistant.companion.android.util.compose.STEP_SCREEN_MAX_WIDTH
 import kotlin.math.min
-import io.homeassistant.companion.android.common.R as commonR
 
 @Composable
 fun MatterCommissioningView(
@@ -69,7 +70,7 @@ fun MatterCommissioningView(
         Column(
             modifier = Modifier
                 .padding(horizontal = 16.dp)
-                .width(min(screenWidth, 600).dp)
+                .width(min(screenWidth, STEP_SCREEN_MAX_WIDTH).dp)
                 .align(Alignment.Center)
         ) {
             MatterCommissioningViewHeader()
@@ -217,7 +218,7 @@ fun MatterCommissioningViewHeader() {
 fun PreviewMatterCommissioningView(
     @PreviewParameter(MatterCommissioningViewPreviewStates::class) step: CommissioningFlowStep
 ) {
-    MdcTheme {
+    HomeAssistantAppTheme {
         MatterCommissioningView(
             step = step,
             deviceName = "Manufacturer Matter Light",

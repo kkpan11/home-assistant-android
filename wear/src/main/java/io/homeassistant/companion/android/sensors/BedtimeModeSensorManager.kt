@@ -4,8 +4,8 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import io.homeassistant.companion.android.common.sensors.SensorManager
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.sensors.SensorManager
 
 class BedtimeModeSensorManager : SensorManager {
     companion object {
@@ -36,7 +36,7 @@ class BedtimeModeSensorManager : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         updateBedtimeMode(context)
     }
 
@@ -44,7 +44,7 @@ class BedtimeModeSensorManager : SensorManager {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
     }
 
-    private fun updateBedtimeMode(context: Context) {
+    private suspend fun updateBedtimeMode(context: Context) {
         if (!isEnabled(context, bedtimeMode)) {
             return
         }

@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.ButtonDefaults
+import androidx.compose.material.Divider
 import androidx.compose.material.DropdownMenu
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.ExperimentalMaterialApi
@@ -44,7 +45,6 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.ModalBottomSheetLayout
 import androidx.compose.material.ModalBottomSheetValue
 import androidx.compose.material.OutlinedButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TextField
 import androidx.compose.material.icons.Icons
@@ -61,6 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -78,19 +79,20 @@ import androidx.compose.ui.unit.sp
 import com.mikepenz.iconics.compose.Image
 import com.mikepenz.iconics.typeface.library.community.material.CommunityMaterial
 import io.homeassistant.companion.android.R
-import io.homeassistant.companion.android.assist.AssistViewModel
-import kotlinx.coroutines.launch
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.assist.AssistViewModelBase
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun AssistSheetView(
     conversation: List<AssistMessage>,
     pipelines: List<AssistUiPipeline>,
-    inputMode: AssistViewModel.AssistInputMode?,
+    inputMode: AssistViewModelBase.AssistInputMode?,
     currentPipeline: AssistUiPipeline?,
     fromFrontend: Boolean,
     onSelectPipeline: (Int, String) -> Unit,
+    onManagePipelines: (() -> Unit)?,
     onChangeInput: () -> Unit,
     onTextInput: (String) -> Unit,
     onMicrophoneInput: () -> Unit,
@@ -133,7 +135,8 @@ fun AssistSheetView(
                         pipelines = pipelines,
                         currentPipeline = currentPipeline,
                         fromFrontend = fromFrontend,
-                        onSelectPipeline = onSelectPipeline
+                        onSelectPipeline = onSelectPipeline,
+                        onManagePipelines = onManagePipelines
                     )
                     LazyColumn(
                         state = lazyListState,
@@ -169,7 +172,8 @@ fun AssistSheetHeader(
     pipelines: List<AssistUiPipeline>,
     currentPipeline: AssistUiPipeline?,
     fromFrontend: Boolean,
-    onSelectPipeline: (Int, String) -> Unit
+    onSelectPipeline: (Int, String) -> Unit,
+    onManagePipelines: (() -> Unit)?
 ) = Column(verticalArrangement = Arrangement.Center) {
     Text(
         text = stringResource(if (fromFrontend) commonR.string.assist else commonR.string.app_name),
@@ -219,6 +223,12 @@ fun AssistSheetHeader(
                             )
                         }
                     }
+                    if (onManagePipelines != null) {
+                        Divider()
+                        DropdownMenuItem(onClick = { onManagePipelines() }) {
+                            Text(stringResource(commonR.string.assist_manage_pipelines))
+                        }
+                    }
                 }
             }
         }
@@ -227,7 +237,7 @@ fun AssistSheetHeader(
 
 @Composable
 fun AssistSheetControls(
-    inputMode: AssistViewModel.AssistInputMode?,
+    inputMode: AssistViewModelBase.AssistInputMode?,
     onChangeInput: () -> Unit,
     onTextInput: (String) -> Unit,
     onMicrophoneInput: () -> Unit
@@ -237,18 +247,18 @@ fun AssistSheetControls(
         return
     }
 
-    if (inputMode == AssistViewModel.AssistInputMode.BLOCKED) { // No info and not recoverable, no space
+    if (inputMode == AssistViewModelBase.AssistInputMode.BLOCKED) { // No info and not recoverable, no space
         return
     }
 
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(inputMode) {
-        if (inputMode == AssistViewModel.AssistInputMode.TEXT || inputMode == AssistViewModel.AssistInputMode.TEXT_ONLY) {
+        if (inputMode == AssistViewModelBase.AssistInputMode.TEXT || inputMode == AssistViewModelBase.AssistInputMode.TEXT_ONLY) {
             focusRequester.requestFocus()
         }
     }
 
-    if (inputMode == AssistViewModel.AssistInputMode.TEXT || inputMode == AssistViewModel.AssistInputMode.TEXT_ONLY) {
+    if (inputMode == AssistViewModelBase.AssistInputMode.TEXT || inputMode == AssistViewModelBase.AssistInputMode.TEXT_ONLY) {
         var text by rememberSaveable(stateSaver = TextFieldValue.Saver) {
             mutableStateOf(TextFieldValue())
         }
@@ -273,13 +283,13 @@ fun AssistSheetControls(
                 if (text.text.isNotBlank()) {
                     onTextInput(text.text)
                     text = TextFieldValue("")
-                } else if (inputMode != AssistViewModel.AssistInputMode.TEXT_ONLY) {
+                } else if (inputMode != AssistViewModelBase.AssistInputMode.TEXT_ONLY) {
                     onChangeInput()
                 }
             },
-            enabled = (inputMode != AssistViewModel.AssistInputMode.TEXT_ONLY || text.text.isNotBlank())
+            enabled = (inputMode != AssistViewModelBase.AssistInputMode.TEXT_ONLY || text.text.isNotBlank())
         ) {
-            val inputIsSend = text.text.isNotBlank() || inputMode == AssistViewModel.AssistInputMode.TEXT_ONLY
+            val inputIsSend = text.text.isNotBlank() || inputMode == AssistViewModelBase.AssistInputMode.TEXT_ONLY
             Image(
                 asset = if (inputIsSend) CommunityMaterial.Icon3.cmd_send else CommunityMaterial.Icon3.cmd_microphone,
                 contentDescription = stringResource(
@@ -296,7 +306,7 @@ fun AssistSheetControls(
             modifier = Modifier.size(64.dp),
             contentAlignment = Alignment.Center
         ) {
-            val inputIsActive = inputMode == AssistViewModel.AssistInputMode.VOICE_ACTIVE
+            val inputIsActive = inputMode == AssistViewModelBase.AssistInputMode.VOICE_ACTIVE
             if (inputIsActive) {
                 val transition = rememberInfiniteTransition()
                 val scale by transition.animateFloat(
@@ -307,11 +317,12 @@ fun AssistSheetControls(
                         repeatMode = RepeatMode.Reverse
                     )
                 )
-                Surface(
-                    color = colorResource(commonR.color.colorSpeechText),
-                    modifier = Modifier.size(48.dp).scale(scale),
-                    shape = CircleShape,
-                    content = {}
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .scale(scale)
+                        .background(color = colorResource(commonR.color.colorSpeechText), shape = CircleShape)
+                        .clip(CircleShape)
                 )
             }
             OutlinedButton(

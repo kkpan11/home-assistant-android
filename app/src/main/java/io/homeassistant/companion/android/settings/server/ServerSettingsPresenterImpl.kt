@@ -4,13 +4,13 @@ import android.util.Log
 import androidx.preference.PreferenceDataStore
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.data.wifi.WifiHelper
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import javax.inject.Inject
 
 class ServerSettingsPresenterImpl @Inject constructor(
     private val serverManager: ServerManager,
@@ -147,21 +147,10 @@ class ServerSettingsPresenterImpl @Inject constructor(
             }
         }
         mainScope.launch {
-            val ssids = serverManager.getServer(serverId)?.connection?.internalSsids.orEmpty()
-            if (ssids.isEmpty()) {
-                serverManager.getServer(serverId)?.let {
-                    serverManager.updateServer(
-                        it.copy(
-                            connection = it.connection.copy(
-                                internalUrl = null
-                            )
-                        )
-                    )
-                }
-            }
-
-            view.enableInternalConnection(ssids.isNotEmpty())
-            view.updateSsids(ssids)
+            val connection = serverManager.getServer(serverId)?.connection
+            val ssids = connection?.internalSsids.orEmpty()
+            view.enableInternalConnection(ssids.isNotEmpty() || connection?.internalEthernet == true || connection?.internalVpn == true)
+            view.updateHomeNetwork(ssids, connection?.internalEthernet, connection?.internalVpn)
         }
     }
 

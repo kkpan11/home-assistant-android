@@ -15,7 +15,7 @@ class DevicePolicyManager : SensorManager {
             R.string.sensor_name_work_profile,
             R.string.sensor_description_work_profile,
             "mdi:briefcase",
-            updateType = SensorManager.BasicSensor.UpdateType.INTENT
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT_ONLY
         )
     }
 
@@ -23,7 +23,7 @@ class DevicePolicyManager : SensorManager {
         return "https://companion.home-assistant.io/docs/core/sensors#work-profile-sensor"
     }
 
-    private var isManagedProfileAvailable: Boolean = false
+    private var isManagedProfileAvailable: Boolean? = null
 
     override val name: Int
         get() = R.string.sensor_name_device_policy
@@ -36,11 +36,11 @@ class DevicePolicyManager : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         updateWorkProfile(context)
     }
 
-    override fun requestSensorUpdate(context: Context, intent: Intent?) {
+    override suspend fun requestSensorUpdate(context: Context, intent: Intent?) {
         // The intent has the only record we get of this state, so save it off in our instance
         if (intent?.action == Intent.ACTION_MANAGED_PROFILE_AVAILABLE) {
             isManagedProfileAvailable = true
@@ -51,17 +51,19 @@ class DevicePolicyManager : SensorManager {
         updateWorkProfile(context)
     }
 
-    private fun updateWorkProfile(context: Context) {
+    private suspend fun updateWorkProfile(context: Context) {
         if (!isEnabled(context, isWorkProfile)) {
             return
         }
 
-        onSensorUpdated(
-            context,
-            isWorkProfile,
-            isManagedProfileAvailable,
-            isWorkProfile.statelessIcon,
-            mapOf()
-        )
+        isManagedProfileAvailable?.let { state ->
+            onSensorUpdated(
+                context,
+                isWorkProfile,
+                state,
+                isWorkProfile.statelessIcon,
+                mapOf()
+            )
+        }
     }
 }

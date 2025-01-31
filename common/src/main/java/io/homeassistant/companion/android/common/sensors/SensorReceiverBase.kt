@@ -11,12 +11,13 @@ import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import io.homeassistant.companion.android.common.R
 import io.homeassistant.companion.android.common.data.integration.IntegrationException
 import io.homeassistant.companion.android.common.data.integration.SensorRegistration
 import io.homeassistant.companion.android.common.data.servers.ServerManager
-import io.homeassistant.companion.android.common.util.sensorCoreSyncChannel
+import io.homeassistant.companion.android.common.util.CHANNEL_SENSOR_SYNC
 import io.homeassistant.companion.android.database.AppDatabase
 import io.homeassistant.companion.android.database.sensor.SensorDao
 import io.homeassistant.companion.android.database.sensor.SensorWithAttributes
@@ -24,6 +25,11 @@ import io.homeassistant.companion.android.database.sensor.toSensorWithAttributes
 import io.homeassistant.companion.android.database.sensor.toSensorsWithAttributes
 import io.homeassistant.companion.android.database.server.Server
 import io.homeassistant.companion.android.database.settings.SensorUpdateFrequencySetting
+import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.util.Locale
+import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,11 +38,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.IOException
-import java.net.ConnectException
-import java.net.SocketTimeoutException
-import java.util.Locale
-import javax.inject.Inject
 
 abstract class SensorReceiverBase : BroadcastReceiver() {
     companion object {
@@ -51,7 +52,7 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
                 SensorUpdateFrequencySetting.FAST_ALWAYS -> true
                 SensorUpdateFrequencySetting.FAST_WHILE_CHARGING -> {
                     val batteryStatusIntent =
-                        context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                        ContextCompat.registerReceiver(context, null, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
                     return batteryStatusIntent?.let { BatterySensorManager.getIsCharging(it) } ?: false
                 }
                 else -> false
@@ -78,7 +79,7 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
         Intent.ACTION_POWER_DISCONNECTED
     )
 
-    protected abstract val skippableActions: Map<String, String>
+    protected abstract val skippableActions: Map<String, List<String>>
 
     protected abstract fun getSensorSettingsIntent(
         context: Context,
@@ -89,14 +90,16 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(tag, "Received intent: ${intent.action}")
-        if (skippableActions.containsKey(intent.action)) {
-            val sensor = skippableActions[intent.action]
-            if (!isSensorEnabled(sensor!!)) {
+        skippableActions[intent.action]?.let { sensors ->
+            val noSensorsEnabled = sensors.none {
+                isSensorEnabled(it)
+            }
+            if (noSensorsEnabled) {
                 Log.d(
                     tag,
                     String.format(
-                        "Sensor %s corresponding to received event %s is disabled, skipping sensors update",
-                        sensor,
+                        "Sensor(s) %s corresponding to received event %s are disabled, skipping sensors update",
+                        sensors.toString(),
                         intent.action
                     )
                 )
@@ -109,17 +112,20 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
             return
         }
 
+        @Suppress("DEPRECATION")
         if (isSensorEnabled(LastUpdateManager.lastUpdate.id)) {
-            LastUpdateManager().sendLastUpdate(context, intent.action)
-            val allSettings = sensorDao.getSettings(LastUpdateManager.lastUpdate.id)
-            for (setting in allSettings) {
-                if (setting.value != "" && intent.action == setting.value) {
-                    val eventData = intent.extras?.keySet()?.map { it.toString() to intent.extras?.get(it).toString() }?.toMap()?.plus("intent" to intent.action.toString())
-                        ?: mapOf("intent" to intent.action.toString())
-                    Log.d(tag, "Event data: $eventData")
-                    sensorDao.get(LastUpdateManager.lastUpdate.id).forEach { sensor ->
-                        if (!sensor.enabled) return@forEach
-                        ioScope.launch {
+            ioScope.launch {
+                LastUpdateManager().sendLastUpdate(context, intent.action)
+                val allSettings = sensorDao.getSettings(LastUpdateManager.lastUpdate.id)
+                for (setting in allSettings) {
+                    if (setting.value != "" && intent.action == setting.value) {
+                        val eventData = intent.extras?.keySet()
+                            ?.associate { it.toString() to intent.extras?.get(it).toString() }
+                            ?.plus("intent" to intent.action.toString())
+                            ?: mapOf("intent" to intent.action.toString())
+                        Log.d(tag, "Event data: $eventData")
+                        sensorDao.get(LastUpdateManager.lastUpdate.id).forEach { sensor ->
+                            if (!sensor.enabled) return@forEach
                             try {
                                 serverManager.integrationRepository(sensor.serverId).fireEvent(
                                     "android.intent_received",
@@ -173,12 +179,6 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
         }
 
         managers.forEach { manager ->
-            // Since we don't have this manager injected it doesn't fulfil its injects, manually
-            // inject for now I guess?
-            if (manager is LocationSensorManagerBase) {
-                manager.serverManager = serverManager
-            }
-
             val hasSensor = manager.hasSensor(context)
             if (hasSensor) {
                 try {
@@ -286,9 +286,9 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
 
                                 context.getSystemService<NotificationManager>()?.let { notificationManager ->
                                     createNotificationChannel(context)
-                                    val notificationId = "$sensorCoreSyncChannel-${basicSensor.id}".hashCode()
+                                    val notificationId = "$CHANNEL_SENSOR_SYNC-${basicSensor.id}".hashCode()
                                     val notificationIntent = getSensorSettingsIntent(context, basicSensor.id, manager.id(), notificationId)
-                                    val notification = NotificationCompat.Builder(context, sensorCoreSyncChannel)
+                                    val notification = NotificationCompat.Builder(context, CHANNEL_SENSOR_SYNC)
                                         .setSmallIcon(R.drawable.ic_stat_ic_notification)
                                         .setContentTitle(context.getString(basicSensor.name))
                                         .setContentText(context.getString(R.string.sensor_worker_sync_missing_permissions))
@@ -428,11 +428,11 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = context.getSystemService<NotificationManager>() ?: return
             var notificationChannel =
-                notificationManager.getNotificationChannel(sensorCoreSyncChannel)
+                notificationManager.getNotificationChannel(CHANNEL_SENSOR_SYNC)
             if (notificationChannel == null) {
                 notificationChannel = NotificationChannel(
-                    sensorCoreSyncChannel,
-                    sensorCoreSyncChannel,
+                    CHANNEL_SENSOR_SYNC,
+                    CHANNEL_SENSOR_SYNC,
                     NotificationManager.IMPORTANCE_DEFAULT
                 )
                 notificationManager.createNotificationChannel(notificationChannel)

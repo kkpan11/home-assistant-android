@@ -7,10 +7,12 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.util.STATE_UNKNOWN
 
 class AudioSensorManager : SensorManager {
     companion object {
         private const val TAG = "AudioSensor"
+        const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
 
         val audioSensor = SensorManager.BasicSensor(
             "audio_sensor",
@@ -18,6 +20,7 @@ class AudioSensorManager : SensorManager {
             commonR.string.sensor_name_ringer_mode,
             commonR.string.sensor_description_audio_sensor,
             "mdi:volume-high",
+            deviceClass = "enum",
             updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
         private val audioState = SensorManager.BasicSensor(
@@ -25,7 +28,8 @@ class AudioSensorManager : SensorManager {
             "sensor",
             commonR.string.sensor_name_audio_mode,
             commonR.string.sensor_description_audio_mode,
-            "mdi:volume-high"
+            "mdi:volume-high",
+            deviceClass = "enum"
         )
         private val headphoneState = SensorManager.BasicSensor(
             "headphone_state",
@@ -42,7 +46,7 @@ class AudioSensorManager : SensorManager {
             commonR.string.sensor_description_mic_muted,
             "mdi:microphone-off",
             updateType =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 SensorManager.BasicSensor.UpdateType.INTENT
             } else {
                 SensorManager.BasicSensor.UpdateType.WORKER
@@ -68,69 +72,77 @@ class AudioSensorManager : SensorManager {
                 SensorManager.BasicSensor.UpdateType.WORKER
             }
         )
-        private val volAlarm = SensorManager.BasicSensor(
+        val volAlarm = SensorManager.BasicSensor(
             "volume_alarm",
             "sensor",
             commonR.string.sensor_name_volume_alarm,
             commonR.string.sensor_description_volume_alarm,
             "mdi:alarm",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
-        private val volCall = SensorManager.BasicSensor(
+        val volCall = SensorManager.BasicSensor(
             "volume_call",
             "sensor",
             commonR.string.sensor_name_volume_call,
             commonR.string.sensor_description_volume_call,
             "mdi:phone",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
-        private val volMusic = SensorManager.BasicSensor(
+        val volMusic = SensorManager.BasicSensor(
             "volume_music",
             "sensor",
             commonR.string.sensor_name_volume_music,
             commonR.string.sensor_description_volume_music,
             "mdi:music",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
-        private val volRing = SensorManager.BasicSensor(
+        val volRing = SensorManager.BasicSensor(
             "volume_ring",
             "sensor",
             commonR.string.sensor_name_volume_ring,
             commonR.string.sensor_description_volume_ring,
             "mdi:phone-ring",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
-        private val volNotification = SensorManager.BasicSensor(
+        val volNotification = SensorManager.BasicSensor(
             "volume_notification",
             "sensor",
             commonR.string.sensor_name_volume_notification,
             commonR.string.sensor_description_volume_notification,
             "mdi:bell-ring",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
-        private val volSystem = SensorManager.BasicSensor(
+        val volSystem = SensorManager.BasicSensor(
             "volume_system",
             "sensor",
             commonR.string.sensor_name_volume_system,
             commonR.string.sensor_description_volume_system,
             "mdi:cellphone-sound",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
-        private val volAccessibility = SensorManager.BasicSensor(
+        val volAccessibility = SensorManager.BasicSensor(
             "volume_accessibility",
             "sensor",
             commonR.string.sensor_name_volume_accessibility,
             commonR.string.sensor_description_volume_accessibility,
             "mdi:human",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
-        private val volDTMF = SensorManager.BasicSensor(
+        val volDTMF = SensorManager.BasicSensor(
             "volume_dtmf",
             "sensor",
             commonR.string.sensor_name_volume_dtmf,
             commonR.string.sensor_description_volume_dtmf,
             "mdi:volume-high",
-            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
+            entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
     }
 
@@ -158,7 +170,7 @@ class AudioSensorManager : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         val audioManager = context.getSystemService<AudioManager>()!!
         updateAudioSensor(context, audioManager)
         updateAudioState(context, audioManager)
@@ -178,7 +190,7 @@ class AudioSensorManager : SensorManager {
         }
     }
 
-    private fun updateAudioSensor(context: Context, audioManager: AudioManager) {
+    private suspend fun updateAudioSensor(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, audioSensor)) {
             return
         }
@@ -187,7 +199,7 @@ class AudioSensorManager : SensorManager {
             AudioManager.RINGER_MODE_NORMAL -> "normal"
             AudioManager.RINGER_MODE_SILENT -> "silent"
             AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
-            else -> "unknown"
+            else -> STATE_UNKNOWN
         }
 
         val icon = when (audioManager.ringerMode) {
@@ -202,11 +214,13 @@ class AudioSensorManager : SensorManager {
             audioSensor,
             ringerMode,
             icon,
-            mapOf()
+            mapOf(
+                "options" to listOf("normal", "silent", "vibrate")
+            )
         )
     }
 
-    private fun updateAudioState(context: Context, audioManager: AudioManager) {
+    private suspend fun updateAudioState(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, audioState)) {
             return
         }
@@ -216,7 +230,9 @@ class AudioSensorManager : SensorManager {
             AudioManager.MODE_IN_CALL -> "in_call"
             AudioManager.MODE_IN_COMMUNICATION -> "in_communication"
             AudioManager.MODE_CALL_SCREENING -> "call_screening"
-            else -> "unknown"
+            AudioManager.MODE_CALL_REDIRECT -> "call_redirect"
+            AudioManager.MODE_COMMUNICATION_REDIRECT -> "communication_redirect"
+            else -> STATE_UNKNOWN
         }
 
         val icon = when (audioManager.mode) {
@@ -225,6 +241,8 @@ class AudioSensorManager : SensorManager {
             AudioManager.MODE_IN_CALL -> "mdi:phone"
             AudioManager.MODE_IN_COMMUNICATION -> "mdi:message-video"
             AudioManager.MODE_CALL_SCREENING -> "mdi:microphone-message"
+            AudioManager.MODE_CALL_REDIRECT -> "mdi:phone"
+            AudioManager.MODE_COMMUNICATION_REDIRECT -> "mdi:message-video"
             else -> "mdi:volume-low"
         }
 
@@ -233,11 +251,16 @@ class AudioSensorManager : SensorManager {
             audioState,
             audioMode,
             icon,
-            mapOf()
+            mapOf(
+                "options" to listOf(
+                    "normal", "ringing", "in_call", "in_communication", "call_screening",
+                    "call_redirect", "communication_redirect"
+                )
+            )
         )
     }
 
-    private fun updateHeadphoneState(context: Context, audioManager: AudioManager) {
+    private suspend fun updateHeadphoneState(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, headphoneState)) {
             return
         }
@@ -251,7 +274,7 @@ class AudioSensorManager : SensorManager {
                 }
             }
         } else {
-            // Use deprecated method as getDevices is API 23 and up only and we support API 21
+            @Suppress("DEPRECATION")
             isHeadphones = audioManager.isWiredHeadsetOn
         }
 
@@ -266,7 +289,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateMicMuted(context: Context, audioManager: AudioManager) {
+    private suspend fun updateMicMuted(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, micMuted)) {
             return
         }
@@ -284,7 +307,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateMusicActive(context: Context, audioManager: AudioManager) {
+    private suspend fun updateMusicActive(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, musicActive)) {
             return
         }
@@ -302,11 +325,13 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateSpeakerphoneState(context: Context, audioManager: AudioManager) {
+    private suspend fun updateSpeakerphoneState(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, speakerphoneState)) {
             return
         }
 
+        // Use deprecated function as we can't perfectly map communication device to speakerphone
+        @Suppress("DEPRECATION")
         val isSpeakerOn = audioManager.isSpeakerphoneOn
 
         val icon = if (isSpeakerOn) "mdi:volume-high" else "mdi:volume-off"
@@ -320,7 +345,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateVolumeAlarm(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeAlarm(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volAlarm)) {
             return
         }
@@ -335,7 +360,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateVolumeCall(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeCall(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volCall)) {
             return
         }
@@ -351,7 +376,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateVolumeMusic(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeMusic(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volMusic)) {
             return
         }
@@ -367,7 +392,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateVolumeRing(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeRing(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volRing)) {
             return
         }
@@ -383,7 +408,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateVolumeNotification(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeNotification(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volNotification)) {
             return
         }
@@ -399,7 +424,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateVolumeSystem(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeSystem(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volSystem)) {
             return
         }
@@ -416,7 +441,7 @@ class AudioSensorManager : SensorManager {
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun updateVolumeAccessibility(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeAccessibility(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volAccessibility)) {
             return
         }
@@ -432,7 +457,7 @@ class AudioSensorManager : SensorManager {
         )
     }
 
-    private fun updateVolumeDTMF(context: Context, audioManager: AudioManager) {
+    private suspend fun updateVolumeDTMF(context: Context, audioManager: AudioManager) {
         if (!isEnabled(context, volDTMF)) {
             return
         }

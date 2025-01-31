@@ -27,6 +27,14 @@ interface PrefsRepository {
 
     suspend fun setControlsAuthEntities(entities: List<String>)
 
+    suspend fun getControlsPanelServer(): Int?
+
+    suspend fun setControlsPanelServer(serverId: Int)
+
+    suspend fun getControlsPanelPath(): String?
+
+    suspend fun setControlsPanelPath(path: String?)
+
     suspend fun isFullScreenEnabled(): Boolean
 
     suspend fun setFullScreenEnabled(enabled: Boolean)
@@ -38,6 +46,10 @@ interface PrefsRepository {
     suspend fun getScreenOrientation(): String?
 
     suspend fun saveScreenOrientation(orientation: String?)
+
+    suspend fun getPageZoomLevel(): Int
+
+    suspend fun setPageZoomLevel(level: Int?)
 
     suspend fun isPinchToZoomEnabled(): Boolean
 
@@ -62,4 +74,23 @@ interface PrefsRepository {
     suspend fun saveKeyAlias(alias: String)
 
     suspend fun getKeyAlias(): String?
+
+    suspend fun getIgnoredSuggestions(): List<String>
+
+    suspend fun setIgnoredSuggestions(ignored: List<String>)
+
+    suspend fun getAutoFavorites(): List<String>
+
+    suspend fun setAutoFavorites(favorites: List<String>)
+
+    suspend fun isLocationHistoryEnabled(): Boolean
+
+    suspend fun setLocationHistoryEnabled(enabled: Boolean)
+
+    suspend fun getImprovPermissionDisplayedCount(): Int
+
+    suspend fun addImprovPermissionDisplayedCount()
+
+    /** Clean up any app-level preferences that might reference servers */
+    suspend fun removeServer(serverId: Int)
 }

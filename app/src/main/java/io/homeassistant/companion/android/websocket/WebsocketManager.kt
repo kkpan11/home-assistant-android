@@ -5,7 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.ConnectivityManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
@@ -25,13 +25,16 @@ import dagger.hilt.components.SingletonComponent
 import io.homeassistant.companion.android.BuildConfig
 import io.homeassistant.companion.android.common.R
 import io.homeassistant.companion.android.common.data.servers.ServerManager
-import io.homeassistant.companion.android.common.util.websocketChannel
-import io.homeassistant.companion.android.common.util.websocketIssuesChannel
+import io.homeassistant.companion.android.common.util.CHANNEL_WEBSOCKET
+import io.homeassistant.companion.android.common.util.CHANNEL_WEBSOCKET_ISSUES
 import io.homeassistant.companion.android.database.settings.SettingsDao
 import io.homeassistant.companion.android.database.settings.WebsocketSetting
 import io.homeassistant.companion.android.notifications.MessagingManager
 import io.homeassistant.companion.android.settings.SettingsActivity
+import io.homeassistant.companion.android.util.hasActiveConnection
 import io.homeassistant.companion.android.webview.WebViewActivity
+import java.lang.IllegalStateException
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,8 +43,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.lang.IllegalStateException
-import java.util.concurrent.TimeUnit
 
 class WebsocketManager(
     appContext: Context,
@@ -66,7 +67,7 @@ class WebsocketManager(
             if (workInfo == null || workInfo.state.isFinished || workInfo.state == WorkInfo.State.ENQUEUED) {
                 workManager.enqueueUniquePeriodicWork(
                     TAG,
-                    ExistingPeriodicWorkPolicy.REPLACE,
+                    ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
                     websocketNotifications
                 )
             } else {
@@ -125,21 +126,18 @@ class WebsocketManager(
 
     private fun shouldWeRun(): Boolean = serverManager.defaultServers.any { shouldRunForServer(it.id) }
 
-    @Suppress("DEPRECATION")
     private fun shouldRunForServer(serverId: Int): Boolean {
         val server = serverManager.getServer(serverId) ?: return false
         val setting = settingsDao.get(serverId)?.websocketSetting ?: DEFAULT_WEBSOCKET_SETTING
-        val isHome = server.connection.isInternal()
+        val isHome = server.connection.isInternal(requiresUrl = false)
 
         // Check for connectivity but not internet access, based on WorkManager's NetworkConnectedController API <26
-        val connectivityManager = applicationContext.getSystemService<ConnectivityManager>()
-        val networkInfo = connectivityManager?.activeNetworkInfo
         val powerManager = applicationContext.getSystemService<PowerManager>()!!
         val displayOff = !powerManager.isInteractive
 
         return when {
             (setting == WebsocketSetting.NEVER) -> false
-            (networkInfo != null && !networkInfo.isConnected) -> false
+            (!applicationContext.hasActiveConnection()) -> false
             !serverManager.isRegistered() -> false
             (displayOff && setting == WebsocketSetting.SCREEN_ON) -> false
             (!isHome && setting == WebsocketSetting.HOME_WIFI) -> false
@@ -188,7 +186,8 @@ class WebsocketManager(
                             if (action is Map<*, *>) {
                                 flattened["action_${i + 1}_key"] = action["action"].toString()
                                 flattened["action_${i + 1}_title"] = action["title"].toString()
-                                flattened["action_${i + 1}_uri"] = action["uri"].toString()
+                                action["uri"]?.let { uri -> flattened["action_${i + 1}_uri"] = uri.toString() }
+                                action["behavior"]?.let { behavior -> flattened["action_${i + 1}_behavior"] = behavior.toString() }
                             }
                         }
                     } else {
@@ -216,16 +215,12 @@ class WebsocketManager(
      */
     private suspend fun createNotification(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            var notificationChannel =
-                notificationManager.getNotificationChannel(websocketChannel)
-            if (notificationChannel == null) {
-                notificationChannel = NotificationChannel(
-                    websocketChannel,
-                    applicationContext.getString(R.string.websocket_setting_name),
-                    NotificationManager.IMPORTANCE_LOW
-                )
-                notificationManager.createNotificationChannel(notificationChannel)
-            }
+            val notificationChannel = NotificationChannel(
+                CHANNEL_WEBSOCKET,
+                applicationContext.getString(R.string.websocket_setting_name),
+                NotificationManager.IMPORTANCE_LOW
+            )
+            notificationManager.createNotificationChannel(notificationChannel)
         }
 
         val intent = WebViewActivity.newInstance(applicationContext)
@@ -250,13 +245,13 @@ class WebsocketManager(
             settingIntent,
             PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(applicationContext, websocketChannel)
+        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_WEBSOCKET)
             .setSmallIcon(R.drawable.ic_stat_ic_notification)
             .setContentTitle(applicationContext.getString(R.string.websocket_listening))
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
-            .setGroup(websocketChannel)
+            .setGroup(CHANNEL_WEBSOCKET)
             .addAction(
                 io.homeassistant.companion.android.R.drawable.ic_websocket,
                 applicationContext.getString(R.string.settings),
@@ -264,23 +259,28 @@ class WebsocketManager(
             )
             .build()
         return try {
-            setForeground(ForegroundInfo(NOTIFICATION_ID, notification))
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
+            } else {
+                0
+            }
+            setForeground(ForegroundInfo(NOTIFICATION_ID, notification, type))
             true
         } catch (e: IllegalStateException) {
             if (e is CancellationException) return false
 
             Log.e(TAG, "Unable to setForeground due to restrictions", e)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (notificationManager.getNotificationChannel(websocketIssuesChannel) == null) {
+                if (notificationManager.getNotificationChannel(CHANNEL_WEBSOCKET_ISSUES) == null) {
                     val restrictedNotificationChannel = NotificationChannel(
-                        websocketIssuesChannel,
+                        CHANNEL_WEBSOCKET_ISSUES,
                         applicationContext.getString(R.string.websocket_notification_issues),
                         NotificationManager.IMPORTANCE_DEFAULT
                     )
                     notificationManager.createNotificationChannel(restrictedNotificationChannel)
                 }
             }
-            val restrictedNotification = NotificationCompat.Builder(applicationContext, websocketIssuesChannel)
+            val restrictedNotification = NotificationCompat.Builder(applicationContext, CHANNEL_WEBSOCKET_ISSUES)
                 .setSmallIcon(R.drawable.ic_stat_ic_notification)
                 .setContentTitle(applicationContext.getString(R.string.websocket_restricted_title))
                 .setContentText(applicationContext.getString(R.string.websocket_restricted_fix))

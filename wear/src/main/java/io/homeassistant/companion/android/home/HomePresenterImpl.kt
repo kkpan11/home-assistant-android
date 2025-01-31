@@ -2,10 +2,13 @@ package io.homeassistant.companion.android.home
 
 import android.util.Log
 import io.homeassistant.companion.android.BuildConfig
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.authentication.SessionState
 import io.homeassistant.companion.android.common.data.integration.DeviceRegistration
 import io.homeassistant.companion.android.common.data.integration.Entity
+import io.homeassistant.companion.android.common.data.integration.EntityExt
 import io.homeassistant.companion.android.common.data.prefs.WearPrefsRepository
+import io.homeassistant.companion.android.common.data.prefs.impl.entities.TemplateTileConfig
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.data.websocket.WebSocketState
 import io.homeassistant.companion.android.common.data.websocket.impl.entities.AreaRegistryResponse
@@ -16,14 +19,13 @@ import io.homeassistant.companion.android.common.data.websocket.impl.entities.En
 import io.homeassistant.companion.android.common.data.websocket.impl.entities.EntityRegistryUpdatedEvent
 import io.homeassistant.companion.android.data.SimplifiedEntity
 import io.homeassistant.companion.android.onboarding.getMessagingToken
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
 
 class HomePresenterImpl @Inject constructor(
     private val serverManager: ServerManager,
@@ -31,10 +33,6 @@ class HomePresenterImpl @Inject constructor(
 ) : HomePresenter {
 
     companion object {
-        val toggleDomains = listOf(
-            "cover", "fan", "humidifier", "input_boolean", "light", "lock",
-            "media_player", "remote", "siren", "switch"
-        )
         val domainsWithNames = mapOf(
             "button" to commonR.string.buttons,
             "cover" to commonR.string.covers,
@@ -97,11 +95,11 @@ class HomePresenterImpl @Inject constructor(
                     "lock"
                 }
             }
-            in toggleDomains -> "toggle"
+            in EntityExt.DOMAINS_TOGGLE -> "toggle"
             else -> "turn_on"
         }
         try {
-            serverManager.integrationRepository().callService(
+            serverManager.integrationRepository().callAction(
                 domain,
                 serviceName,
                 hashMapOf("entity_id" to entityId)
@@ -113,7 +111,7 @@ class HomePresenterImpl @Inject constructor(
 
     override suspend fun onFanSpeedChanged(entityId: String, speed: Float) {
         try {
-            serverManager.integrationRepository().callService(
+            serverManager.integrationRepository().callAction(
                 entityId.split(".")[0],
                 "set_percentage",
                 hashMapOf(
@@ -128,7 +126,7 @@ class HomePresenterImpl @Inject constructor(
 
     override suspend fun onBrightnessChanged(entityId: String, brightness: Float) {
         try {
-            serverManager.integrationRepository().callService(
+            serverManager.integrationRepository().callAction(
                 entityId.split(".")[0],
                 "turn_on",
                 hashMapOf(
@@ -144,7 +142,7 @@ class HomePresenterImpl @Inject constructor(
     override suspend fun onColorTempChanged(entityId: String, colorTemp: Float, isKelvin: Boolean) {
         try {
             val colorTempKey = if (isKelvin) "color_temp_kelvin" else "color_temp"
-            serverManager.integrationRepository().callService(
+            serverManager.integrationRepository().callAction(
                 entityId.split(".")[0],
                 "turn_on",
                 hashMapOf(
@@ -233,12 +231,20 @@ class HomePresenterImpl @Inject constructor(
         return serverManager.webSocketRepository().getEntityRegistryUpdates()
     }
 
-    override suspend fun getTileShortcuts(): List<SimplifiedEntity> {
-        return wearPrefsRepository.getTileShortcuts().map { SimplifiedEntity(it) }
+    override suspend fun getAllTileShortcuts(): Map<Int?, List<SimplifiedEntity>> {
+        return wearPrefsRepository.getAllTileShortcuts().mapValues { (_, entities) ->
+            entities.map {
+                SimplifiedEntity(it)
+            }
+        }
     }
 
-    override suspend fun setTileShortcuts(entities: List<SimplifiedEntity>) {
-        wearPrefsRepository.setTileShortcuts(entities.map { it.entityString })
+    override suspend fun getTileShortcuts(tileId: Int): List<SimplifiedEntity> {
+        return wearPrefsRepository.getTileShortcutsAndSaveTileId(tileId).map { SimplifiedEntity(it) }
+    }
+
+    override suspend fun setTileShortcuts(tileId: Int?, entities: List<SimplifiedEntity>) {
+        wearPrefsRepository.setTileShortcuts(tileId, entities.map { it.entityString })
     }
 
     override suspend fun getWearHapticFeedback(): Boolean {
@@ -265,20 +271,14 @@ class HomePresenterImpl @Inject constructor(
         wearPrefsRepository.setShowShortcutTextEnabled(enabled)
     }
 
-    override suspend fun getTemplateTileContent(): String {
-        return wearPrefsRepository.getTemplateTileContent()
+    override suspend fun getAllTemplateTiles(): Map<Int, TemplateTileConfig> {
+        return wearPrefsRepository.getAllTemplateTiles()
     }
 
-    override suspend fun setTemplateTileContent(content: String) {
-        wearPrefsRepository.setTemplateTileContent(content)
-    }
-
-    override suspend fun getTemplateTileRefreshInterval(): Int {
-        return wearPrefsRepository.getTemplateTileRefreshInterval()
-    }
-
-    override suspend fun setTemplateTileRefreshInterval(interval: Int) {
-        wearPrefsRepository.setTemplateTileRefreshInterval(interval)
+    override suspend fun setTemplateTileRefreshInterval(tileId: Int, interval: Int) {
+        getAllTemplateTiles()[tileId]?.let {
+            wearPrefsRepository.setTemplateTile(tileId, it.template, interval)
+        }
     }
 
     override suspend fun getWearFavoritesOnly(): Boolean {

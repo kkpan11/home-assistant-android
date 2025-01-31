@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.IntentSender
 import androidx.activity.result.ActivityResult
 import io.homeassistant.companion.android.common.data.websocket.impl.entities.ThreadDatasetResponse
-import kotlinx.coroutines.CoroutineScope
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
 
 class ThreadManagerImpl @Inject constructor() : ThreadManager {
 
@@ -19,16 +19,22 @@ class ThreadManagerImpl @Inject constructor() : ThreadManager {
     override suspend fun syncPreferredDataset(
         context: Context,
         serverId: Int,
+        exportOnly: Boolean,
         scope: CoroutineScope
-    ): IntentSender? = null
+    ): ThreadManager.SyncResult = ThreadManager.SyncResult.AppUnsupported
 
     override suspend fun getPreferredDatasetFromServer(serverId: Int): ThreadDatasetResponse? = null
 
-    override suspend fun importDatasetFromServer(context: Context, datasetId: String, serverId: Int) { }
+    override suspend fun importDatasetFromServer(
+        context: Context,
+        datasetId: String,
+        preferredBorderAgentId: String?,
+        serverId: Int
+    ) { }
 
     override suspend fun getPreferredDatasetFromDevice(context: Context): IntentSender? {
         throw IllegalStateException("Thread is not supported with the minimal flavor")
     }
 
-    override suspend fun sendThreadDatasetExportResult(result: ActivityResult, serverId: Int) { }
+    override suspend fun sendThreadDatasetExportResult(result: ActivityResult, serverId: Int): String? = null
 }

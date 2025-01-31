@@ -8,8 +8,8 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager.SENSOR_DELAY_NORMAL
 import android.util.Log
 import androidx.core.content.getSystemService
-import kotlin.math.roundToInt
 import io.homeassistant.companion.android.common.R as commonR
+import kotlin.math.roundToInt
 
 class LightSensorManager : SensorManager, SensorEventListener {
     companion object {
@@ -51,14 +51,14 @@ class LightSensorManager : SensorManager, SensorEventListener {
     private lateinit var latestContext: Context
     private lateinit var mySensorManager: android.hardware.SensorManager
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         latestContext = context
         updateLightSensor()
     }
 
-    private fun updateLightSensor() {
+    private suspend fun updateLightSensor() {
         if (!isEnabled(latestContext, lightSensor)) {
             return
         }

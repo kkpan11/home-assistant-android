@@ -23,9 +23,9 @@ import io.homeassistant.companion.android.database.wear.EntityStateComplications
 import io.homeassistant.companion.android.database.wear.EntityStateComplicationsDao
 import io.homeassistant.companion.android.database.wear.FavoritesDao
 import io.homeassistant.companion.android.database.wear.getAllFlow
+import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 @HiltViewModel
 class ComplicationConfigViewModel @Inject constructor(
@@ -39,7 +39,9 @@ class ComplicationConfigViewModel @Inject constructor(
     }
 
     enum class LoadingState {
-        LOADING, READY, ERROR
+        LOADING,
+        READY,
+        ERROR
     }
 
     val app = getApplication<HomeAssistantApplication>()
@@ -58,6 +60,8 @@ class ComplicationConfigViewModel @Inject constructor(
         private set
     var entityShowTitle by mutableStateOf(true)
         private set
+    var entityShowUnit by mutableStateOf(true)
+        private set
 
     init {
         loadEntities()
@@ -71,6 +75,7 @@ class ComplicationConfigViewModel @Inject constructor(
             stored?.let {
                 selectedEntity = SimplifiedEntity(entityId = it.entityId)
                 entityShowTitle = it.showTitle
+                entityShowUnit = it.showUnit
                 if (loadingState == LoadingState.READY) {
                     updateSelectedEntity()
                 }
@@ -153,9 +158,13 @@ class ComplicationConfigViewModel @Inject constructor(
         entityShowTitle = show
     }
 
+    fun setShowUnit(show: Boolean) {
+        entityShowUnit = show
+    }
+
     fun addEntityStateComplication(id: Int, entity: SimplifiedEntity) {
         viewModelScope.launch {
-            entityStateComplicationsDao.add(EntityStateComplications(id, entity.entityId, entityShowTitle))
+            entityStateComplicationsDao.add(EntityStateComplications(id, entity.entityId, entityShowTitle, entityShowUnit))
         }
     }
 

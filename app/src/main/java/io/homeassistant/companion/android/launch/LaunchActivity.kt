@@ -1,5 +1,7 @@
 package io.homeassistant.companion.android.launch
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
@@ -11,9 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.google.accompanist.themeadapter.material.MdcTheme
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.BuildConfig
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.integration.DeviceRegistration
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.database.sensor.SensorDao
@@ -27,17 +29,18 @@ import io.homeassistant.companion.android.onboarding.OnboardApp
 import io.homeassistant.companion.android.onboarding.getMessagingToken
 import io.homeassistant.companion.android.sensors.LocationSensorManager
 import io.homeassistant.companion.android.settings.SettingViewModel
+import io.homeassistant.companion.android.settings.server.ServerChooserFragment
 import io.homeassistant.companion.android.util.UrlUtil
+import io.homeassistant.companion.android.util.compose.HomeAssistantAppTheme
 import io.homeassistant.companion.android.webview.WebViewActivity
+import javax.inject.Inject
+import javax.net.ssl.SSLException
+import javax.net.ssl.SSLHandshakeException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
-import javax.inject.Inject
-import javax.net.ssl.SSLException
-import javax.net.ssl.SSLHandshakeException
-import io.homeassistant.companion.android.common.R as commonR
 
 @AndroidEntryPoint
 class LaunchActivity : AppCompatActivity(), LaunchView {
@@ -68,7 +71,7 @@ class LaunchActivity : AppCompatActivity(), LaunchView {
         super.onCreate(savedInstanceState)
         setContent {
             Box(modifier = Modifier.fillMaxSize()) {
-                MdcTheme {
+                HomeAssistantAppTheme {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center)
                     )
@@ -81,7 +84,47 @@ class LaunchActivity : AppCompatActivity(), LaunchView {
     override fun displayWebview() {
         presenter.setSessionExpireMillis(0)
 
-        startActivity(WebViewActivity.newInstance(this, intent.data?.path))
+        if (packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE) && BuildConfig.FLAVOR == "full") {
+            val carIntent = Intent(
+                this,
+                Class.forName("androidx.car.app.activity.CarAppActivity")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(carIntent)
+        } else if (presenter.hasMultipleServers() && intent.data?.path?.isNotBlank() == true) {
+            var serverParameter: Int? = null
+            if (intent.data?.queryParameterNames.orEmpty().contains("server")) {
+                val serverName = intent.data?.getQueryParameter("server").takeIf { !it.isNullOrBlank() }
+                if (serverName == "default" || serverName == null) {
+                    serverParameter = serverManager.getServer()?.id
+                } else {
+                    serverManager.defaultServers
+                        .firstOrNull { it.friendlyName.equals(serverName, ignoreCase = true) }
+                        ?.let {
+                            serverParameter = it.id
+                        }
+                }
+            }
+
+            if (serverParameter != null) {
+                startActivity(WebViewActivity.newInstance(this, intent.data?.path, serverParameter))
+            } else { // Show server chooser
+                supportFragmentManager.setFragmentResultListener(ServerChooserFragment.RESULT_KEY, this) { _, bundle ->
+                    val serverId = if (bundle.containsKey(ServerChooserFragment.RESULT_SERVER)) {
+                        bundle.getInt(ServerChooserFragment.RESULT_SERVER)
+                    } else {
+                        null
+                    }
+                    supportFragmentManager.clearFragmentResultListener(ServerChooserFragment.RESULT_KEY)
+                    startActivity(WebViewActivity.newInstance(this, intent.data?.path, serverId))
+                    finish()
+                    overridePendingTransition(0, 0) // Disable activity start/stop animation
+                }
+                ServerChooserFragment().show(supportFragmentManager, ServerChooserFragment.TAG)
+                return
+            }
+        } else {
+            startActivity(WebViewActivity.newInstance(this, intent.data?.path))
+        }
         finish()
         overridePendingTransition(0, 0) // Disable activity start/stop animation
     }

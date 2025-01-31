@@ -20,12 +20,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mikepenz.iconics.IconicsDrawable
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.sensors.SensorManager
 import io.homeassistant.companion.android.common.sensors.id
 import io.homeassistant.companion.android.database.sensor.Sensor
 import io.homeassistant.companion.android.settings.sensor.SensorSettingsViewModel
 import io.homeassistant.companion.android.settings.views.SettingsRow
-import io.homeassistant.companion.android.common.R as commonR
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -92,7 +92,9 @@ fun SensorRow(
     }
     val mdiIcon = try {
         IconicsDrawable(context, "cmd-${iconToUse.split(":")[1]}").icon
-    } catch (e: Exception) { null }
+    } catch (e: Exception) {
+        null
+    }
 
     SettingsRow(
         primaryText = stringResource(basicSensor.name),
@@ -100,7 +102,7 @@ fun SensorRow(
             if (dbSensor.state.isBlank()) {
                 stringResource(commonR.string.enabled)
             } else {
-                if (basicSensor.unitOfMeasurement.isNullOrBlank()) {
+                if (basicSensor.unitOfMeasurement.isNullOrBlank() || dbSensor.state.toDoubleOrNull() == null) {
                     dbSensor.state
                 } else {
                     "${dbSensor.state} ${basicSensor.unitOfMeasurement}"

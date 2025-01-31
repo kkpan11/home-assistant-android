@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
 import android.graphics.Color
 import android.location.Location
 import android.os.Build
@@ -19,12 +20,12 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import io.homeassistant.companion.android.common.util.highAccuracyChannel
+import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.util.CHANNEL_HIGH_ACCURACY
 import io.homeassistant.companion.android.sensors.LocationSensorManager
 import io.homeassistant.companion.android.util.ForegroundServiceLauncher
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import io.homeassistant.companion.android.common.R as commonR
 
 class HighAccuracyLocationService : Service() {
 
@@ -64,7 +65,7 @@ class HighAccuracyLocationService : Service() {
 
         fun updateNotificationAddress(context: Context, location: Location, geocodedAddress: String = "") {
             var locationReadable = geocodedAddress
-            if (locationReadable.isNullOrEmpty()) {
+            if (locationReadable.isEmpty()) {
                 locationReadable = getFormattedLocationInDegree(location.latitude, location.longitude)
             }
             locationReadable = "$locationReadable (~${location.accuracy}m)"
@@ -112,7 +113,7 @@ class HighAccuracyLocationService : Service() {
 
         private fun createNotificationBuilder(context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(highAccuracyChannel, context.getString(commonR.string.high_accuracy_mode_channel_name), NotificationManager.IMPORTANCE_DEFAULT)
+                val channel = NotificationChannel(CHANNEL_HIGH_ACCURACY, context.getString(commonR.string.high_accuracy_mode_channel_name), NotificationManager.IMPORTANCE_DEFAULT)
                 notificationManagerCompat.createNotificationChannel(channel)
             }
 
@@ -123,7 +124,7 @@ class HighAccuracyLocationService : Service() {
 
             val disablePendingIntent = PendingIntent.getBroadcast(context, 0, disableIntent, PendingIntent.FLAG_MUTABLE)
 
-            notificationBuilder = NotificationCompat.Builder(context, highAccuracyChannel)
+            notificationBuilder = NotificationCompat.Builder(context, CHANNEL_HIGH_ACCURACY)
                 .setSmallIcon(commonR.drawable.ic_stat_ic_notification)
                 .setColor(Color.GRAY)
                 .setOngoing(true)
@@ -148,7 +149,8 @@ class HighAccuracyLocationService : Service() {
         createNotificationBuilder(this)
         notification = notificationBuilder.build()
 
-        LAUNCHER.onServiceCreated(this, notificationId, notification)
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) FOREGROUND_SERVICE_TYPE_LOCATION else 0
+        LAUNCHER.onServiceCreated(this, notificationId, notification, type)
 
         Log.d(TAG, "High accuracy location service created -> onCreate")
     }
@@ -188,14 +190,18 @@ class HighAccuracyLocationService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun requestLocationUpdates(intervalInSeconds: Int) {
-        val request = LocationRequest.create()
-
         val intervalInMS = (intervalInSeconds * 1000).toLong()
-        request.interval = intervalInMS
-        request.fastestInterval = intervalInMS / 2
-        request.priority = Priority.PRIORITY_HIGH_ACCURACY
+        val request = LocationRequest.Builder(intervalInMS)
+            .setMinUpdateIntervalMillis(intervalInMS / 2)
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .build()
 
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        fusedLocationProviderClient = try {
+            LocationServices.getFusedLocationProviderClient(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to get fused location provider client", e)
+            null
+        }
         fusedLocationProviderClient?.requestLocationUpdates(request, getLocationUpdateIntent())
     }
 }

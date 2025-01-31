@@ -9,5 +9,7 @@ data class ThreadDatasetResponse(
     val networkName: String,
     val panId: String,
     val preferred: Boolean,
+    // only on core >= 2023.9, may still be null
+    val preferredBorderAgentId: String?,
     val source: String
 )

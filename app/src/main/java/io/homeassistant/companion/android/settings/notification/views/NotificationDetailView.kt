@@ -1,6 +1,5 @@
 package io.homeassistant.companion.android.settings.notification.views
 
-import android.text.Html
 import android.widget.TextView
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
@@ -16,13 +15,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.text.HtmlCompat
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.database.notification.NotificationItem
 import io.homeassistant.companion.android.util.notificationItem
 import java.util.Calendar
 import java.util.GregorianCalendar
-import io.homeassistant.companion.android.common.R as commonR
 
 @Composable
 fun LoadNotification(notification: NotificationItem) {
@@ -48,7 +48,7 @@ fun LoadNotification(notification: NotificationItem) {
         AndroidView(
             factory = { context ->
                 TextView(context).apply {
-                    text = Html.fromHtml(notification.message)
+                    text = HtmlCompat.fromHtml(notification.message, HtmlCompat.FROM_HTML_MODE_LEGACY)
                     textSize = 16f
                 }
             },

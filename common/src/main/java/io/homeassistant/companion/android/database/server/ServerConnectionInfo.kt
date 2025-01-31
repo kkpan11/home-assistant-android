@@ -8,9 +8,8 @@ import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.homeassistant.companion.android.common.data.wifi.WifiHelper
-import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URL
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 data class ServerConnectionInfo(
     @ColumnInfo(name = "external_url")
@@ -29,6 +28,10 @@ data class ServerConnectionInfo(
     val useCloud: Boolean = false,
     @ColumnInfo(name = "internal_ssids")
     val internalSsids: List<String> = emptyList(),
+    @ColumnInfo(name = "internal_ethernet")
+    val internalEthernet: Boolean? = null,
+    @ColumnInfo(name = "internal_vpn")
+    val internalVpn: Boolean? = null,
     @ColumnInfo(name = "prioritize_internal")
     val prioritizeInternal: Boolean = false
 ) {
@@ -43,34 +46,34 @@ data class ServerConnectionInfo(
             return arrayOf()
         }
 
-        val retVal = ArrayList<URL>()
+        val retVal = mutableListOf<URL?>()
 
         // If we are local then add the local URL in the first position, otherwise no reason to try
         if (isInternal() || prioritizeInternal) {
             internalUrl?.let {
                 retVal.add(
-                    it.toHttpUrl().newBuilder()
-                        .addPathSegments("api/webhook/$webhookId")
-                        .build()
-                        .toUrl()
+                    it.toHttpUrlOrNull()?.newBuilder()
+                        ?.addPathSegments("api/webhook/$webhookId")
+                        ?.build()
+                        ?.toUrl()
                 )
             }
         }
 
         cloudhookUrl?.let {
-            retVal.add(it.toHttpUrl().toUrl())
+            retVal.add(it.toHttpUrlOrNull()?.toUrl())
         }
 
         externalUrl.let {
             retVal.add(
-                it.toHttpUrl().newBuilder()
-                    .addPathSegments("api/webhook/$webhookId")
-                    .build()
-                    .toUrl()
+                it.toHttpUrlOrNull()?.newBuilder()
+                    ?.addPathSegments("api/webhook/$webhookId")
+                    ?.build()
+                    ?.toUrl()
             )
         }
 
-        return retVal.toTypedArray()
+        return retVal.filterNotNull().toTypedArray()
     }
 
     fun getUrl(isInternal: Boolean? = null, force: Boolean = false): URL? {
@@ -92,14 +95,35 @@ data class ServerConnectionInfo(
 
     fun canUseCloud(): Boolean = !this.cloudUrl.isNullOrBlank()
 
-    fun isHomeWifiSsid(): Boolean = wifiHelper.isUsingSpecificWifi(internalSsids)
+    /**
+     * Indicate if the device's current connection should be treated as internal for
+     * this server.
+     * @param requiresUrl Whether a valid internal url is required for internal or not.
+     *   Usually you want this `true` for url related actions and `false` for others.
+     */
+    fun isInternal(requiresUrl: Boolean = true): Boolean {
+        if (requiresUrl && internalUrl.isNullOrBlank()) return false
 
-    fun isInternal(): Boolean {
-        val usesInternalSsid = wifiHelper.isUsingSpecificWifi(internalSsids)
-        val usesWifi = wifiHelper.isUsingWifi()
-        val localUrl = internalUrl
-        Log.d(this::class.simpleName, "localUrl is: ${!localUrl.isNullOrBlank()}, usesInternalSsid is: $usesInternalSsid, usesWifi is: $usesWifi")
-        return !localUrl.isNullOrBlank() && usesInternalSsid && usesWifi
+        if (internalEthernet == true) {
+            val usesEthernet = wifiHelper.isUsingEthernet()
+            Log.d(this::class.simpleName, "usesEthernet is: $usesEthernet")
+            if (usesEthernet) return true
+        }
+
+        if (internalVpn == true) {
+            val usesVpn = wifiHelper.isUsingVpn()
+            Log.d(this::class.simpleName, "usesVpn is: $usesVpn")
+            if (usesVpn) return true
+        }
+
+        return if (internalSsids.isNotEmpty()) {
+            val usesInternalSsid = wifiHelper.isUsingSpecificWifi(internalSsids)
+            val usesWifi = wifiHelper.isUsingWifi()
+            Log.d(this::class.simpleName, "usesInternalSsid is: $usesInternalSsid, usesWifi is: $usesWifi")
+            usesInternalSsid && usesWifi
+        } else {
+            false
+        }
     }
 }
 
