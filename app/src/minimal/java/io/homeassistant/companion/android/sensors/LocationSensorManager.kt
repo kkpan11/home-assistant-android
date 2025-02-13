@@ -1,12 +1,12 @@
 package io.homeassistant.companion.android.sensors
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import io.homeassistant.companion.android.common.sensors.LocationSensorManagerBase
-import io.homeassistant.companion.android.common.sensors.SensorManager
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.sensors.SensorManager
 
-class LocationSensorManager : LocationSensorManagerBase(), SensorManager {
+class LocationSensorManager : BroadcastReceiver(), SensorManager {
 
     companion object {
         const val MINIMUM_ACCURACY = 200
@@ -68,7 +68,7 @@ class LocationSensorManager : LocationSensorManagerBase(), SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         // Noop
     }
 }

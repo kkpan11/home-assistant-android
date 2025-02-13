@@ -12,11 +12,13 @@ import android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW
 import android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM
 import android.hardware.SensorManager.SENSOR_STATUS_NO_CONTACT
 import android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE
+import android.os.Build
 import android.util.Log
 import androidx.core.content.getSystemService
-import io.homeassistant.companion.android.common.sensors.SensorManager
-import kotlin.math.roundToInt
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.sensors.SensorManager
+import io.homeassistant.companion.android.common.util.STATE_UNKNOWN
+import kotlin.math.roundToInt
 
 class HeartRateSensorManager : SensorManager, SensorEventListener {
     companion object {
@@ -52,7 +54,11 @@ class HeartRateSensorManager : SensorManager, SensorEventListener {
     }
 
     override fun requiredPermissions(sensorId: String): Array<String> {
-        return arrayOf(Manifest.permission.BODY_SENSORS)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(Manifest.permission.BODY_SENSORS, Manifest.permission.BODY_SENSORS_BACKGROUND)
+        } else {
+            arrayOf(Manifest.permission.BODY_SENSORS)
+        }
     }
 
     override fun hasSensor(context: Context): Boolean {
@@ -63,14 +69,14 @@ class HeartRateSensorManager : SensorManager, SensorEventListener {
     private lateinit var latestContext: Context
     private lateinit var mySensorManager: android.hardware.SensorManager
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         latestContext = context
         updateHeartRate()
     }
 
-    private fun updateHeartRate() {
+    private suspend fun updateHeartRate() {
         if (!isEnabled(latestContext, heartRate)) {
             return
         }
@@ -135,7 +141,7 @@ class HeartRateSensorManager : SensorManager, SensorEventListener {
             SENSOR_STATUS_ACCURACY_LOW -> "low"
             SENSOR_STATUS_UNRELIABLE -> "unreliable"
             SENSOR_STATUS_NO_CONTACT -> "no_contact"
-            else -> "unknown"
+            else -> STATE_UNKNOWN
         }
     }
 }

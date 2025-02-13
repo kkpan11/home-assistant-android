@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.util.STATE_UNAVAILABLE
 import io.homeassistant.companion.android.database.AppDatabase
 import io.homeassistant.companion.android.database.sensor.SensorSetting
 import io.homeassistant.companion.android.database.sensor.SensorSettingType
@@ -14,7 +16,6 @@ import java.util.Date
 import java.util.GregorianCalendar
 import java.util.TimeZone
 import kotlin.math.absoluteValue
-import io.homeassistant.companion.android.common.R as commonR
 
 class LastRebootSensorManager : SensorManager {
     companion object {
@@ -48,21 +49,21 @@ class LastRebootSensorManager : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         updateLastReboot(context)
     }
 
     @SuppressLint("SimpleDateFormat")
-    private fun updateLastReboot(context: Context) {
+    private suspend fun updateLastReboot(context: Context) {
         if (!isEnabled(context, lastRebootSensor)) {
             return
         }
 
         var timeInMillis = 0L
         var local = ""
-        var utc = "unavailable"
+        var utc = STATE_UNAVAILABLE
 
         val sensorDao = AppDatabase.getInstance(context).sensorDao()
         val fullSensor = sensorDao.getFull(lastRebootSensor.id).toSensorWithAttributes()

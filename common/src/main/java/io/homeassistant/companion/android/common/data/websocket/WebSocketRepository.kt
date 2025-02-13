@@ -35,6 +35,7 @@ interface WebSocketRepository {
     suspend fun getAreaRegistry(): List<AreaRegistryResponse>?
     suspend fun getDeviceRegistry(): List<DeviceRegistryResponse>?
     suspend fun getEntityRegistry(): List<EntityRegistryResponse>?
+    suspend fun getEntityRegistryFor(entityId: String): EntityRegistryResponse?
     suspend fun getServices(): List<DomainResponse>?
     suspend fun getStateChanges(): Flow<StateChangedEvent>?
     suspend fun getStateChanges(entityIds: List<String>): Flow<TriggerEvent>?
@@ -59,7 +60,7 @@ interface WebSocketRepository {
      * @return [MatterCommissionResponse] detailing the server's response, or `null` if the server
      * did not return a response.
      */
-    suspend fun commissionMatterDeviceOnNetwork(pin: Long): MatterCommissionResponse?
+    suspend fun commissionMatterDeviceOnNetwork(pin: Long, ip: String): MatterCommissionResponse?
 
     /**
      * Return a list of all Thread datasets known to the server.

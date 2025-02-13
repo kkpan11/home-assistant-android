@@ -1,7 +1,5 @@
 package io.homeassistant.companion.android.settings.notification
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
@@ -9,23 +7,26 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.os.BundleCompat
+import androidx.core.view.MenuHost
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import com.google.accompanist.themeadapter.material.MdcTheme
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.database.notification.NotificationDao
 import io.homeassistant.companion.android.database.notification.NotificationItem
 import io.homeassistant.companion.android.settings.notification.views.LoadNotification
-import kotlinx.coroutines.launch
+import io.homeassistant.companion.android.util.compose.HomeAssistantAppTheme
 import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class NotificationDetailFragment : Fragment() {
 
     companion object {
-        val ARG_NOTIF = "notification"
+        const val ARG_NOTIF = "notification"
     }
 
     @Inject
@@ -34,28 +35,10 @@ class NotificationDetailFragment : Fragment() {
     private lateinit var notification: NotificationItem
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        notification = arguments?.get(ARG_NOTIF) as NotificationItem
+        notification = arguments?.let {
+            BundleCompat.getSerializable(it, ARG_NOTIF, NotificationItem::class.java)
+        } ?: return
         super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu) {
-        super.onPrepareOptionsMenu(menu)
-        menu.setGroupVisible(R.id.notification_toolbar_group, true)
-        menu.removeItem(R.id.search_notifications)
-        menu.removeItem(R.id.notification_filter)
-
-        menu.findItem(R.id.get_help)?.let {
-            it.isVisible = true
-            it.intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://companion.home-assistant.io/docs/notifications/notifications-basic"))
-        }
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.action_delete) {
-            deleteConfirmation()
-        }
-        return super.onOptionsItemSelected(item)
     }
 
     override fun onCreateView(
@@ -65,11 +48,34 @@ class NotificationDetailFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                MdcTheme {
+                HomeAssistantAppTheme {
                     LoadNotification(notification)
                 }
             }
         }
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        val menuHost: MenuHost = requireActivity()
+        menuHost.addMenuProvider(
+            object : NotificationMenuProvider() {
+                override fun onPrepareMenu(menu: Menu) {
+                    super.onPrepareMenu(menu)
+                    menu.removeItem(R.id.search_notifications)
+                    menu.removeItem(R.id.notification_filter)
+                }
+
+                override fun onMenuItemSelected(menuItem: MenuItem) = when (menuItem.itemId) {
+                    R.id.action_delete -> {
+                        deleteConfirmation()
+                        true
+                    }
+                    else -> false
+                }
+            },
+            viewLifecycleOwner,
+            Lifecycle.State.RESUMED
+        )
     }
 
     private fun deleteConfirmation() {

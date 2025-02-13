@@ -9,9 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.MaterialTheme
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
+import androidx.compose.material.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,11 +24,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.mikepenz.iconics.compose.Image
 import com.mikepenz.iconics.typeface.library.community.material.CommunityMaterial
-import io.homeassistant.companion.android.util.compose.MdcAlertDialog
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.util.compose.MdcAlertDialog
 
 @Composable
 fun NfcWriteView(
@@ -97,7 +98,7 @@ fun NfcWriteIdentifierDialog(
         onDismissRequest = onCancel,
         title = { Text(stringResource(commonR.string.nfc_write_tag_enter_identifier)) },
         content = {
-            OutlinedTextField(
+            TextField(
                 value = inputValue.value,
                 keyboardOptions = KeyboardOptions(
                     imeAction = ImeAction.Done
@@ -108,4 +109,16 @@ fun NfcWriteIdentifierDialog(
         onCancel = onCancel,
         onSave = { onSubmit(inputValue.value) }
     )
+}
+
+@Preview(showSystemUi = true)
+@Composable
+fun NfcWriteViewNfcDisabledPreview() {
+    NfcWriteView(isNfcEnabled = false, identifier = "identifier")
+}
+
+@Preview(showSystemUi = true)
+@Composable
+fun NfcWriteViewNfcEnabledPreview() {
+    NfcWriteView(isNfcEnabled = true, identifier = "identifier", onSetIdentifier = {})
 }

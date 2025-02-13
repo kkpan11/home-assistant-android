@@ -14,14 +14,26 @@ class OnboardApp : ActivityResultContract<OnboardApp.Input, OnboardApp.Output?>(
         private const val EXTRA_LOCATION_TRACKING_POSSIBLE = "location_tracking_possible"
         private const val EXTRA_NOTIFICATIONS_POSSIBLE = "notifications_possible"
         private const val EXTRA_IS_WATCH = "extra_is_watch"
+        private const val EXTRA_DISCOVERY_OPTIONS = "extra_discovery_options"
+        private const val EXTRA_MAY_REQUIRE_TLS_CLIENT_CERTIFICATE = "may_require_tls_client_certificate"
 
         fun parseInput(intent: Intent): Input = Input(
             url = intent.getStringExtra(EXTRA_URL),
             defaultDeviceName = intent.getStringExtra(EXTRA_DEFAULT_DEVICE_NAME) ?: Build.MODEL,
             locationTrackingPossible = intent.getBooleanExtra(EXTRA_LOCATION_TRACKING_POSSIBLE, false),
             notificationsPossible = intent.getBooleanExtra(EXTRA_NOTIFICATIONS_POSSIBLE, true),
-            isWatch = intent.getBooleanExtra(EXTRA_IS_WATCH, false)
+            isWatch = intent.getBooleanExtra(EXTRA_IS_WATCH, false),
+            discoveryOptions = intent.getStringExtra(EXTRA_DISCOVERY_OPTIONS)?.let { DiscoveryOptions.valueOf(it) },
+            mayRequireTlsClientCertificate = intent.getBooleanExtra(EXTRA_MAY_REQUIRE_TLS_CLIENT_CERTIFICATE, false)
         )
+    }
+
+    enum class DiscoveryOptions {
+        /** Add existing servers in the app to discovery results using their external URL */
+        ADD_EXISTING_EXTERNAL,
+
+        /** Hide existing servers in the app from discovery results if discovered */
+        HIDE_EXISTING
     }
 
     data class Input(
@@ -29,7 +41,9 @@ class OnboardApp : ActivityResultContract<OnboardApp.Input, OnboardApp.Output?>(
         val defaultDeviceName: String = Build.MODEL,
         val locationTrackingPossible: Boolean = BuildConfig.FLAVOR == "full",
         val notificationsPossible: Boolean = true,
-        val isWatch: Boolean = false
+        val isWatch: Boolean = false,
+        val discoveryOptions: DiscoveryOptions? = null,
+        val mayRequireTlsClientCertificate: Boolean = false
     )
 
     data class Output(
@@ -37,7 +51,9 @@ class OnboardApp : ActivityResultContract<OnboardApp.Input, OnboardApp.Output?>(
         val authCode: String,
         val deviceName: String,
         val deviceTrackingEnabled: Boolean,
-        val notificationsEnabled: Boolean
+        val notificationsEnabled: Boolean,
+        val tlsClientCertificateUri: String,
+        val tlsClientCertificatePassword: String
     ) {
         fun toIntent(): Intent {
             return Intent().apply {
@@ -46,6 +62,22 @@ class OnboardApp : ActivityResultContract<OnboardApp.Input, OnboardApp.Output?>(
                 putExtra("DeviceName", deviceName)
                 putExtra("LocationTracking", deviceTrackingEnabled)
                 putExtra("Notifications", notificationsEnabled)
+                putExtra("TLSClientCertificateUri", tlsClientCertificateUri)
+                putExtra("TLSClientCertificatePassword", tlsClientCertificatePassword)
+            }
+        }
+
+        companion object {
+            fun fromIntent(intent: Intent): Output {
+                return Output(
+                    url = intent.getStringExtra("URL").toString(),
+                    authCode = intent.getStringExtra("AuthCode").toString(),
+                    deviceName = intent.getStringExtra("DeviceName").toString(),
+                    deviceTrackingEnabled = intent.getBooleanExtra("LocationTracking", false),
+                    notificationsEnabled = intent.getBooleanExtra("Notifications", true),
+                    tlsClientCertificateUri = intent.getStringExtra("TLSClientCertificateUri").toString(),
+                    tlsClientCertificatePassword = intent.getStringExtra("TLSClientCertificatePassword").toString()
+                )
             }
         }
     }
@@ -57,6 +89,8 @@ class OnboardApp : ActivityResultContract<OnboardApp.Input, OnboardApp.Output?>(
             putExtra(EXTRA_LOCATION_TRACKING_POSSIBLE, input.locationTrackingPossible)
             putExtra(EXTRA_NOTIFICATIONS_POSSIBLE, input.notificationsPossible)
             putExtra(EXTRA_IS_WATCH, input.isWatch)
+            putExtra(EXTRA_DISCOVERY_OPTIONS, input.discoveryOptions?.toString())
+            putExtra(EXTRA_MAY_REQUIRE_TLS_CLIENT_CERTIFICATE, input.mayRequireTlsClientCertificate)
         }
     }
 
@@ -65,17 +99,6 @@ class OnboardApp : ActivityResultContract<OnboardApp.Input, OnboardApp.Output?>(
             return null
         }
 
-        val url = intent.getStringExtra("URL").toString()
-        val authCode = intent.getStringExtra("AuthCode").toString()
-        val deviceName = intent.getStringExtra("DeviceName").toString()
-        val deviceTrackingEnabled = intent.getBooleanExtra("LocationTracking", false)
-        val notificationsEnabled = intent.getBooleanExtra("Notifications", true)
-        return Output(
-            url = url,
-            authCode = authCode,
-            deviceName = deviceName,
-            deviceTrackingEnabled = deviceTrackingEnabled,
-            notificationsEnabled = notificationsEnabled
-        )
+        return Output.fromIntent(intent)
     }
 }

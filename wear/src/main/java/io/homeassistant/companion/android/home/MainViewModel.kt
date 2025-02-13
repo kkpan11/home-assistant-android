@@ -1,6 +1,8 @@
 package io.homeassistant.companion.android.home
 
 import android.app.Application
+import android.content.ComponentName
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -9,12 +11,16 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.homeassistant.companion.android.BuildConfig
 import io.homeassistant.companion.android.HomeAssistantApplication
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.integration.domain
+import io.homeassistant.companion.android.common.data.prefs.impl.entities.TemplateTileConfig
 import io.homeassistant.companion.android.common.data.websocket.WebSocketState
 import io.homeassistant.companion.android.common.data.websocket.impl.entities.AreaRegistryResponse
 import io.homeassistant.companion.android.common.data.websocket.impl.entities.DeviceRegistryResponse
@@ -22,14 +28,19 @@ import io.homeassistant.companion.android.common.data.websocket.impl.entities.En
 import io.homeassistant.companion.android.common.sensors.SensorManager
 import io.homeassistant.companion.android.data.SimplifiedEntity
 import io.homeassistant.companion.android.database.sensor.SensorDao
+import io.homeassistant.companion.android.database.wear.CameraTile
+import io.homeassistant.companion.android.database.wear.CameraTileDao
 import io.homeassistant.companion.android.database.wear.FavoriteCaches
 import io.homeassistant.companion.android.database.wear.FavoriteCachesDao
 import io.homeassistant.companion.android.database.wear.FavoritesDao
+import io.homeassistant.companion.android.database.wear.ThermostatTile
+import io.homeassistant.companion.android.database.wear.ThermostatTileDao
 import io.homeassistant.companion.android.database.wear.getAll
 import io.homeassistant.companion.android.database.wear.getAllFlow
 import io.homeassistant.companion.android.sensors.SensorReceiver
 import io.homeassistant.companion.android.util.RegistriesDataHandler
 import io.homeassistant.companion.android.util.throttleLatest
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
@@ -37,13 +48,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val favoritesDao: FavoritesDao,
     private val favoriteCachesDao: FavoriteCachesDao,
     private val sensorsDao: SensorDao,
+    private val cameraTileDao: CameraTileDao,
+    private val thermostatTileDao: ThermostatTileDao,
     application: Application
 ) : AndroidViewModel(application) {
 
@@ -52,8 +64,12 @@ class MainViewModel @Inject constructor(
     }
 
     enum class LoadingState {
-        LOADING, READY, ERROR
+        LOADING,
+        READY,
+        ERROR
     }
+
+    private val app = application
 
     private lateinit var homePresenter: HomePresenter
     private var areaRegistry: List<AreaRegistryResponse>? = null
@@ -80,8 +96,16 @@ class MainViewModel @Inject constructor(
     val favoriteEntityIds = favoritesDao.getAllFlow().collectAsState()
     private val favoriteCaches = favoriteCachesDao.getAll()
 
-    var shortcutEntities = mutableStateListOf<SimplifiedEntity>()
+    val shortcutEntitiesMap = mutableStateMapOf<Int?, SnapshotStateList<SimplifiedEntity>>()
+
+    val cameraTiles = cameraTileDao.getAllFlow().collectAsState()
+    var cameraEntitiesMap = mutableStateMapOf<String, SnapshotStateList<Entity<*>>>()
         private set
+
+    val thermostatTiles = thermostatTileDao.getAllFlow().collectAsState()
+    var climateEntitiesMap = mutableStateMapOf<String, SnapshotStateList<Entity<*>>>()
+        private set
+
     var areas = mutableListOf<AreaRegistryResponse>()
         private set
 
@@ -108,11 +132,13 @@ class MainViewModel @Inject constructor(
         private set
     var isShowShortcutTextEnabled = mutableStateOf(false)
         private set
-    var templateTileContent = mutableStateOf("")
-        private set
-    var templateTileRefreshInterval = mutableStateOf(0)
+    var templateTiles = mutableStateMapOf<Int, TemplateTileConfig>()
         private set
     var isFavoritesOnly by mutableStateOf(false)
+        private set
+    var isAssistantAppAllowed by mutableStateOf(true)
+        private set
+    var areNotificationsAllowed by mutableStateOf(false)
         private set
 
     fun supportedDomains(): List<String> = HomePresenterImpl.supportedDomains
@@ -129,13 +155,39 @@ class MainViewModel @Inject constructor(
             if (!homePresenter.isConnected()) {
                 return@launch
             }
-            shortcutEntities.addAll(homePresenter.getTileShortcuts())
+            loadShortcutTileEntities()
             isHapticEnabled.value = homePresenter.getWearHapticFeedback()
             isToastEnabled.value = homePresenter.getWearToastConfirmation()
             isShowShortcutTextEnabled.value = homePresenter.getShowShortcutText()
-            templateTileContent.value = homePresenter.getTemplateTileContent()
-            templateTileRefreshInterval.value = homePresenter.getTemplateTileRefreshInterval()
+            templateTiles.clear()
+            templateTiles.putAll(homePresenter.getAllTemplateTiles())
             isFavoritesOnly = homePresenter.getWearFavoritesOnly()
+
+            val assistantAppComponent = ComponentName(
+                BuildConfig.APPLICATION_ID,
+                "io.homeassistant.companion.android.conversation.AssistantActivity"
+            )
+            isAssistantAppAllowed =
+                app.packageManager.getComponentEnabledSetting(assistantAppComponent) != PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+
+            refreshNotificationPermission()
+        }
+    }
+
+    fun loadShortcutTileEntities() {
+        viewModelScope.launch {
+            val map = homePresenter.getAllTileShortcuts().mapValues { (_, entities) ->
+                entities.toMutableStateList()
+            }
+            shortcutEntitiesMap.clear()
+            shortcutEntitiesMap.putAll(map)
+        }
+    }
+
+    fun loadTemplateTiles() {
+        viewModelScope.launch {
+            templateTiles.clear()
+            templateTiles.putAll(homePresenter.getAllTemplateTiles())
         }
     }
 
@@ -196,6 +248,12 @@ class MainViewModel @Inject constructor(
         getEntities.await()?.also {
             entities.clear()
             it.forEach { state -> updateEntityStates(state) }
+
+            // Special lists: camera entities and climate entities
+            val cameraEntities = it.filter { entity -> entity.domain == "camera" }
+            cameraEntitiesMap["camera"] = mutableStateListOf<Entity<*>>().apply { addAll(cameraEntities) }
+            val climateEntities = it.filter { entity -> entity.domain == "climate" }
+            climateEntitiesMap["climate"] = mutableStateListOf<Entity<*>>().apply { addAll(climateEntities) }
         }
         if (!isFavoritesOnly) {
             updateEntityDomains()
@@ -387,22 +445,54 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun setTileShortcut(index: Int, entity: SimplifiedEntity) {
+    fun setCameraTileEntity(tileId: Int, entityId: String) = viewModelScope.launch {
+        val current = cameraTileDao.get(tileId)
+        val updated = current?.copy(entityId = entityId) ?: CameraTile(id = tileId, entityId = entityId)
+        cameraTileDao.add(updated)
+    }
+
+    fun setCameraTileRefreshInterval(tileId: Int, interval: Long) = viewModelScope.launch {
+        val current = cameraTileDao.get(tileId)
+        val updated = current?.copy(refreshInterval = interval) ?: CameraTile(id = tileId, refreshInterval = interval)
+        cameraTileDao.add(updated)
+    }
+
+    fun setThermostatTileEntity(tileId: Int, entityId: String) = viewModelScope.launch {
+        val current = thermostatTileDao.get(tileId)
+        val updated = current?.copy(entityId = entityId) ?: ThermostatTile(id = tileId, entityId = entityId)
+        thermostatTileDao.add(updated)
+    }
+
+    fun setThermostatTileRefreshInterval(tileId: Int, interval: Long) = viewModelScope.launch {
+        val current = thermostatTileDao.get(tileId)
+        val updated = current?.copy(refreshInterval = interval) ?: ThermostatTile(id = tileId, refreshInterval = interval)
+        thermostatTileDao.add(updated)
+    }
+
+    fun setThermostatTileShowName(tileId: Int, showName: Boolean) = viewModelScope.launch {
+        val current = thermostatTileDao.get(tileId)
+        val updated = current?.copy(showEntityName = showName) ?: ThermostatTile(id = tileId, showEntityName = showName)
+        thermostatTileDao.add(updated)
+    }
+
+    fun setTileShortcut(tileId: Int?, index: Int, entity: SimplifiedEntity) {
         viewModelScope.launch {
+            val shortcutEntities = shortcutEntitiesMap[tileId]!!
             if (index < shortcutEntities.size) {
                 shortcutEntities[index] = entity
             } else {
                 shortcutEntities.add(entity)
             }
-            homePresenter.setTileShortcuts(shortcutEntities)
+            homePresenter.setTileShortcuts(tileId, entities = shortcutEntities)
         }
     }
 
-    fun clearTileShortcut(index: Int) {
+    fun clearTileShortcut(tileId: Int?, index: Int) {
         viewModelScope.launch {
+            val shortcutEntities = shortcutEntitiesMap[tileId]!!
             if (index < shortcutEntities.size) {
                 shortcutEntities.removeAt(index)
-                homePresenter.setTileShortcuts(shortcutEntities)
+                homePresenter.setTileShortcuts(tileId, entities = shortcutEntities)
             }
         }
     }
@@ -428,13 +518,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun setTemplateTileContent(content: String) {
-        viewModelScope.launch {
-            homePresenter.setTemplateTileContent(content)
-            templateTileContent.value = content
-        }
-    }
-
     fun setWearFavoritesOnly(enabled: Boolean) {
         viewModelScope.launch {
             homePresenter.setWearFavoritesOnly(enabled)
@@ -442,10 +525,12 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun setTemplateTileRefreshInterval(interval: Int) {
+    fun setTemplateTileRefreshInterval(tileId: Int, interval: Int) {
         viewModelScope.launch {
-            homePresenter.setTemplateTileRefreshInterval(interval)
-            templateTileRefreshInterval.value = interval
+            homePresenter.setTemplateTileRefreshInterval(tileId, interval)
+            templateTiles[tileId]?.let {
+                templateTiles[tileId] = it.copy(refreshInterval = interval)
+            }
         }
     }
 
@@ -478,6 +563,23 @@ class MainViewModel @Inject constructor(
             val name = attributes["friendly_name"]?.toString() ?: entityId
             favoriteCachesDao.add(FavoriteCaches(entityId, name, icon))
         }
+    }
+
+    fun setAssistantApp(allowed: Boolean) {
+        val assistantAppComponent = ComponentName(
+            BuildConfig.APPLICATION_ID,
+            "io.homeassistant.companion.android.conversation.AssistantActivity"
+        )
+        app.packageManager.setComponentEnabledSetting(
+            assistantAppComponent,
+            if (allowed) PackageManager.COMPONENT_ENABLED_STATE_DEFAULT else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP
+        )
+        isAssistantAppAllowed = allowed
+    }
+
+    fun refreshNotificationPermission() {
+        areNotificationsAllowed = NotificationManagerCompat.from(app).areNotificationsEnabled()
     }
 
     fun logout() {

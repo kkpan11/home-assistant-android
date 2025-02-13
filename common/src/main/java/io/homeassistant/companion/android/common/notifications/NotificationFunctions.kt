@@ -2,8 +2,12 @@ package io.homeassistant.companion.android.common.notifications
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
@@ -16,10 +20,12 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import com.mikepenz.iconics.IconicsDrawable
+import com.mikepenz.iconics.utils.colorFilter
 import com.mikepenz.iconics.utils.toAndroidIconCompat
 import com.vdurmont.emoji.EmojiParser
 import io.homeassistant.companion.android.common.R
-import io.homeassistant.companion.android.common.util.generalChannel
+import io.homeassistant.companion.android.common.util.CHANNEL_GENERAL
+import io.homeassistant.companion.android.common.util.cancel
 import java.util.Locale
 
 object NotificationData {
@@ -48,6 +54,9 @@ object NotificationData {
 
     const val MEDIA_STREAM = "media_stream"
     val ALARM_STREAMS = listOf(ALARM_STREAM, ALARM_STREAM_MAX)
+
+    // special action constants
+    const val CLEAR_NOTIFICATION = "clear_notification"
 }
 
 fun createChannelID(
@@ -65,8 +74,8 @@ fun handleChannel(
     data: Map<String, String>
 ): String {
     // Define some values for a default channel
-    var channelID = generalChannel
-    var channelName = "General"
+    var channelID = CHANNEL_GENERAL
+    var channelName = context.getString(R.string.general)
 
     if (!data[NotificationData.CHANNEL].isNullOrEmpty()) {
         channelID = createChannelID(data[NotificationData.CHANNEL].toString())
@@ -211,7 +220,7 @@ fun handleSmallIcon(
         val iconDrawable =
             IconicsDrawable(context, "cmd-$iconName")
         if (iconDrawable.icon != null) {
-            builder.setSmallIcon(iconDrawable.toAndroidIconCompat())
+            builder.setSmallIcon(iconDrawable.colorFilter { PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) }.toAndroidIconCompat())
         } else {
             builder.setSmallIcon(R.drawable.ic_stat_ic_notification)
         }
@@ -275,4 +284,35 @@ fun handleText(
         builder.setContentText(text)
         builder.setStyle(NotificationCompat.BigTextStyle().bigText(text))
     }
+}
+
+fun clearNotification(context: Context, tag: String) {
+    Log.d(NotificationData.TAG, "Clearing notification with tag: $tag")
+    val notificationManagerCompat = NotificationManagerCompat.from(context)
+    val messageId = tag.hashCode()
+    notificationManagerCompat.cancel(tag, messageId, true)
+}
+
+fun handleDeleteIntent(
+    context: Context,
+    builder: NotificationCompat.Builder,
+    data: Map<String, String>,
+    messageId: Int,
+    group: String?,
+    groupId: Int,
+    databaseId: Long?
+) {
+    val deleteIntent = Intent(context, NotificationDeleteReceiver::class.java).apply {
+        putExtra(NotificationDeleteReceiver.EXTRA_DATA, HashMap(data))
+        putExtra(NotificationDeleteReceiver.EXTRA_NOTIFICATION_GROUP, group)
+        putExtra(NotificationDeleteReceiver.EXTRA_NOTIFICATION_GROUP_ID, groupId)
+        putExtra(NotificationDeleteReceiver.EXTRA_NOTIFICATION_DB, databaseId)
+    }
+    val deletePendingIntent = PendingIntent.getBroadcast(
+        context,
+        messageId,
+        deleteIntent,
+        PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    builder.setDeleteIntent(deletePendingIntent)
 }

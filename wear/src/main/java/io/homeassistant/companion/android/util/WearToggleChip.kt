@@ -12,11 +12,9 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.wear.compose.material.ContentAlpha
-import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.ToggleChipColors
 import androidx.wear.compose.material.ToggleChipDefaults
-import androidx.wear.compose.material.contentColorFor
+import androidx.wear.compose.material3.contentColorFor
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.integration.EntityPosition
 import io.homeassistant.companion.android.common.data.integration.domain
@@ -24,12 +22,15 @@ import io.homeassistant.companion.android.common.data.integration.getCoverPositi
 import io.homeassistant.companion.android.common.data.integration.getFanSpeed
 import io.homeassistant.companion.android.common.data.integration.getLightBrightness
 import io.homeassistant.companion.android.common.data.integration.getLightColor
+import io.homeassistant.companion.android.theme.wearColorScheme
 
 object WearToggleChip {
     /**
-     * A function that provides chip colors that mostly follow the default toggle chip colors, but when supported
-     * provide a background for active entities that reflects their state (position and color). Gradient code
-     * is based on [androidx.wear.compose.material.ToggleChipDefaults.toggleChipColors].
+     * A function that provides chip colors that mostly follow M3 styling, but for use with M2
+     * components that can to, when supported, provide a background for active entities that
+     * reflects their state (position and color). M3's ToggleButton does not allow anything more
+     * complicated than a single color on a button. Gradient code is based on
+     * [androidx.wear.compose.material.ToggleChipDefaults.toggleChipColors].
      *
      * @param entity The entity state on which the background for the active state should be based
      */
@@ -38,9 +39,9 @@ object WearToggleChip {
         // For a toggleable entity, a custom background should only be used if it has:
         // a. a position (eg. fan speed, light brightness)
         // b. a custom color (eg. light color)
-        // If there is a position (a) but no color (b), use the default (theme) color for the 'active' part.
-        // If there is a color (b) but no position (a), use a smooth gradient similar to ToggleChip.
-        // If it doesn't have either or is 'off', it should use the default chip background.
+        // If there is a position (a) but no color (b), use the on (surfaceBright) color for the 'active' part.
+        // If there is a color (b) but no position (a), use the calculated color for the background.
+        // If it doesn't have either or is 'off', it should use the default off (surfaceDim) background.
 
         val hasPosition = when (entity.domain) {
             "cover" -> entity.state != "closed" && entity.getCoverPosition() != null
@@ -53,34 +54,40 @@ object WearToggleChip {
 
         val contentBackgroundColor = if (hasColor) {
             val entityColor = entity.getLightColor()
-            if (entityColor != null) Color(entityColor) else MaterialTheme.colors.primary
+            if (entityColor != null) Color(entityColor) else wearColorScheme.surfaceContainerHigh
         } else {
-            MaterialTheme.colors.primary
+            wearColorScheme.surfaceContainerHigh
         }
 
         return when {
             (hasPosition || hasColor) -> {
-                val checkedStartBackgroundColor = contentBackgroundColor.copy(alpha = 0.5f)
-                    .compositeOver(MaterialTheme.colors.surface)
-                val checkedEndBackgroundColor = MaterialTheme.colors.surface.copy(alpha = 0f)
-                    .compositeOver(MaterialTheme.colors.surface)
-                val uncheckedBackgroundColor = MaterialTheme.colors.surface
+                val checkedStartBackgroundColor = if (hasColor) {
+                    contentBackgroundColor.copy(alpha = 0.5f).compositeOver(wearColorScheme.surfaceContainerLow)
+                } else {
+                    wearColorScheme.surfaceContainerHigh
+                }
+                val checkedEndBackgroundColor = if (hasPosition) {
+                    wearColorScheme.surfaceContainerLow // Used as 'off' color
+                } else {
+                    checkedStartBackgroundColor // On no position = entire background 'on'
+                }
+                val uncheckedBackgroundColor = wearColorScheme.surfaceContainerLow
 
                 var checkedBackgroundColors = listOf(
                     checkedStartBackgroundColor,
                     checkedEndBackgroundColor
                 )
                 var disabledCheckedBackgroundColors = listOf(
-                    checkedStartBackgroundColor.copy(alpha = ContentAlpha.disabled),
-                    checkedEndBackgroundColor.copy(alpha = ContentAlpha.disabled)
+                    checkedStartBackgroundColor.copy(alpha = 0.38f),
+                    checkedEndBackgroundColor.copy(alpha = 0.38f)
                 )
                 val uncheckedBackgroundColors = listOf(
                     uncheckedBackgroundColor,
                     uncheckedBackgroundColor
                 )
                 val disabledUncheckedBackgroundColors = listOf(
-                    uncheckedBackgroundColor.copy(alpha = ContentAlpha.disabled),
-                    uncheckedBackgroundColor.copy(alpha = ContentAlpha.disabled)
+                    uncheckedBackgroundColor.copy(alpha = 0.38f),
+                    uncheckedBackgroundColor.copy(alpha = 0.38f)
                 )
                 if (gradientDirection != LayoutDirection.Ltr) {
                     checkedBackgroundColors = checkedBackgroundColors.reversed()
@@ -156,14 +163,28 @@ object WearToggleChip {
                     disabledUncheckedBackgroundPaint = WearBrushPainter(Brush.linearGradient(disabledUncheckedBackgroundColors))
                 }
 
-                defaultChipColors().apply {
+                defaultChipColors(
+                    checkedContentColor = wearColorScheme.onPrimaryContainer,
+                    checkedSecondaryContentColor = wearColorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    uncheckedContentColor = wearColorScheme.onSurface,
+                    uncheckedSecondaryContentColor = wearColorScheme.onSurfaceVariant
+                ).apply {
                     checkedBackgroundPainter = checkedBackgroundPaint
                     disabledCheckedBackgroundPainter = disabledCheckedBackgroundPaint
                     uncheckedBackgroundPainter = uncheckedBackgroundPaint
                     disabledUncheckedBackgroundPainter = disabledUncheckedBackgroundPaint
                 }
             }
-            else -> ToggleChipDefaults.toggleChipColors()
+            else -> ToggleChipDefaults.toggleChipColors(
+                checkedStartBackgroundColor = wearColorScheme.surfaceContainerHigh,
+                checkedEndBackgroundColor = wearColorScheme.surfaceContainerHigh,
+                checkedContentColor = wearColorScheme.onPrimaryContainer,
+                checkedSecondaryContentColor = wearColorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                uncheckedStartBackgroundColor = wearColorScheme.surfaceContainerLow,
+                uncheckedEndBackgroundColor = wearColorScheme.surfaceContainerLow,
+                uncheckedContentColor = wearColorScheme.onSurface,
+                uncheckedSecondaryContentColor = wearColorScheme.onSurfaceVariant
+            )
         }
     }
 
@@ -175,15 +196,15 @@ object WearToggleChip {
     @Composable
     private fun defaultChipColors(
         checkedStartBackgroundColor: Color =
-            MaterialTheme.colors.surface.copy(alpha = 0f)
-                .compositeOver(MaterialTheme.colors.surface),
+            wearColorScheme.outlineVariant.copy(alpha = 0f)
+                .compositeOver(wearColorScheme.tertiary),
         checkedEndBackgroundColor: Color =
-            MaterialTheme.colors.primary.copy(alpha = 0.5f)
-                .compositeOver(MaterialTheme.colors.surface),
-        checkedContentColor: Color = MaterialTheme.colors.onSurface,
-        checkedSecondaryContentColor: Color = MaterialTheme.colors.onSurfaceVariant,
-        checkedToggleControlColor: Color = MaterialTheme.colors.secondary,
-        uncheckedStartBackgroundColor: Color = MaterialTheme.colors.surface,
+            wearColorScheme.primary.copy(alpha = 0.5f)
+                .compositeOver(wearColorScheme.tertiary),
+        checkedContentColor: Color = wearColorScheme.onTertiary,
+        checkedSecondaryContentColor: Color = wearColorScheme.tertiary,
+        checkedToggleControlColor: Color = wearColorScheme.tertiary,
+        uncheckedStartBackgroundColor: Color = wearColorScheme.outlineVariant,
         uncheckedEndBackgroundColor: Color = uncheckedStartBackgroundColor,
         uncheckedContentColor: Color = contentColorFor(checkedEndBackgroundColor),
         uncheckedSecondaryContentColor: Color = uncheckedContentColor,
@@ -198,8 +219,8 @@ object WearToggleChip {
                 checkedEndBackgroundColor
             )
             disabledCheckedBackgroundColors = listOf(
-                checkedStartBackgroundColor.copy(alpha = ContentAlpha.disabled),
-                checkedEndBackgroundColor.copy(alpha = ContentAlpha.disabled)
+                checkedStartBackgroundColor.copy(alpha = 0.38f),
+                checkedEndBackgroundColor.copy(alpha = 0.38f)
             )
         } else {
             checkedBackgroundColors = listOf(
@@ -207,8 +228,8 @@ object WearToggleChip {
                 checkedStartBackgroundColor
             )
             disabledCheckedBackgroundColors = listOf(
-                checkedEndBackgroundColor.copy(alpha = ContentAlpha.disabled),
-                checkedStartBackgroundColor.copy(alpha = ContentAlpha.disabled)
+                checkedEndBackgroundColor.copy(alpha = 0.38f),
+                checkedStartBackgroundColor.copy(alpha = 0.38f)
             )
         }
         val uncheckedBackgroundColors: List<Color>
@@ -219,8 +240,8 @@ object WearToggleChip {
                 uncheckedEndBackgroundColor
             )
             disabledUncheckedBackgroundColors = listOf(
-                uncheckedStartBackgroundColor.copy(alpha = ContentAlpha.disabled),
-                uncheckedEndBackgroundColor.copy(alpha = ContentAlpha.disabled)
+                uncheckedStartBackgroundColor.copy(alpha = 0.38f),
+                uncheckedEndBackgroundColor.copy(alpha = 0.38f)
             )
         } else {
             uncheckedBackgroundColors = listOf(
@@ -228,8 +249,8 @@ object WearToggleChip {
                 uncheckedStartBackgroundColor
             )
             disabledUncheckedBackgroundColors = listOf(
-                uncheckedEndBackgroundColor.copy(alpha = ContentAlpha.disabled),
-                uncheckedStartBackgroundColor.copy(alpha = ContentAlpha.disabled)
+                uncheckedEndBackgroundColor.copy(alpha = 0.38f),
+                uncheckedStartBackgroundColor.copy(alpha = 0.38f)
             )
         }
 
@@ -247,24 +268,24 @@ object WearToggleChip {
             disabledCheckedBackgroundPainter = WearBrushPainter(
                 Brush.linearGradient(disabledCheckedBackgroundColors)
             ),
-            disabledCheckedContentColor = checkedContentColor.copy(alpha = ContentAlpha.disabled),
+            disabledCheckedContentColor = checkedContentColor.copy(alpha = 0.38f),
             disabledCheckedSecondaryContentColor = checkedSecondaryContentColor.copy(
-                alpha = ContentAlpha.disabled
+                alpha = 0.38f
             ),
             disabledCheckedIconColor = checkedToggleControlColor.copy(
-                alpha = ContentAlpha.disabled
+                alpha = 0.38f
             ),
             disabledUncheckedBackgroundPainter = WearBrushPainter(
                 Brush.linearGradient(disabledUncheckedBackgroundColors)
             ),
             disabledUncheckedContentColor = uncheckedContentColor.copy(
-                alpha = ContentAlpha.disabled
+                alpha = 0.38f
             ),
             disabledUncheckedSecondaryContentColor = uncheckedSecondaryContentColor.copy(
-                alpha = ContentAlpha.disabled
+                alpha = 0.38f
             ),
             disabledUncheckedIconColor = uncheckedToggleControlColor.copy(
-                alpha = ContentAlpha.disabled
+                alpha = 0.38f
             )
         )
     }

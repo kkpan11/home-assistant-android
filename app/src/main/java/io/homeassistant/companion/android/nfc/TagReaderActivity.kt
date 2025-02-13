@@ -8,17 +8,17 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
-import com.google.accompanist.themeadapter.material.MdcTheme
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.BaseActivity
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.nfc.views.TagReaderView
-import io.homeassistant.companion.android.util.UrlHandler
+import io.homeassistant.companion.android.util.UrlUtil
+import io.homeassistant.companion.android.util.compose.HomeAssistantAppTheme
+import javax.inject.Inject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
 
 @AndroidEntryPoint
 class TagReaderActivity : BaseActivity() {
@@ -34,7 +34,7 @@ class TagReaderActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MdcTheme {
+            HomeAssistantAppTheme {
                 TagReaderView()
             }
         }
@@ -63,7 +63,7 @@ class TagReaderActivity : BaseActivity() {
     private suspend fun handleTag(url: Uri?, isNfcTag: Boolean) {
         // https://www.home-assistant.io/tag/5f0ba733-172f-430d-a7f8-e4ad940c88d7
 
-        val nfcTagId = UrlHandler.splitNfcTagId(url)
+        val nfcTagId = UrlUtil.splitNfcTagId(url)
         Log.d(TAG, "Tag ID: $nfcTagId")
         if (nfcTagId != null && serverManager.isRegistered()) {
             serverManager.defaultServers.map {

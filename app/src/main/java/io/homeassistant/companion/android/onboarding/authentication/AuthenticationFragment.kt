@@ -22,9 +22,9 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import com.google.accompanist.themeadapter.material.MdcTheme
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.HomeAssistantApis
 import io.homeassistant.companion.android.common.data.authentication.impl.AuthenticationService
 import io.homeassistant.companion.android.common.data.keychain.KeyChainRepository
@@ -32,10 +32,12 @@ import io.homeassistant.companion.android.onboarding.OnboardingViewModel
 import io.homeassistant.companion.android.onboarding.integration.MobileAppIntegrationFragment
 import io.homeassistant.companion.android.themes.ThemesManager
 import io.homeassistant.companion.android.util.TLSWebViewClient
+import io.homeassistant.companion.android.util.compose.HomeAssistantAppTheme
 import io.homeassistant.companion.android.util.isStarted
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
+import javax.inject.Named
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 @AndroidEntryPoint
 class AuthenticationFragment : Fragment() {
@@ -53,6 +55,7 @@ class AuthenticationFragment : Fragment() {
     lateinit var themesManager: ThemesManager
 
     @Inject
+    @Named("keyChainRepository")
     lateinit var keyChainRepository: KeyChainRepository
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -63,7 +66,7 @@ class AuthenticationFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                MdcTheme {
+                HomeAssistantAppTheme {
                     AndroidView({
                         WebView(requireContext()).apply {
                             themesManager.setThemeForWebView(requireContext(), settings)
@@ -166,8 +169,16 @@ class AuthenticationFragment : Fragment() {
 
     private fun buildAuthUrl(base: String): String {
         return try {
-            base.toHttpUrl()
-                .newBuilder()
+            val url = base.toHttpUrl()
+            val builder = if (url.host.endsWith("ui.nabu.casa", true)) {
+                HttpUrl.Builder()
+                    .scheme(url.scheme)
+                    .host(url.host)
+                    .port(url.port)
+            } else {
+                url.newBuilder()
+            }
+            builder
                 .addPathSegments("auth/authorize")
                 .addEncodedQueryParameter("response_type", "code")
                 .addEncodedQueryParameter("client_id", AuthenticationService.CLIENT_ID)

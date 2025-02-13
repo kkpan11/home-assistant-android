@@ -8,8 +8,9 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
-import io.homeassistant.companion.android.common.sensors.SensorManager
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.sensors.SensorManager
+import io.homeassistant.companion.android.common.util.STATE_UNKNOWN
 
 class LastAppSensorManager : SensorManager {
     companion object {
@@ -35,7 +36,11 @@ class LastAppSensorManager : SensorManager {
     }
 
     override fun hasSensor(context: Context): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+        return if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            false
+        } else {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
@@ -44,14 +49,14 @@ class LastAppSensorManager : SensorManager {
     }
 
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP_MR1)
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         updateLastApp(context)
     }
 
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP_MR1)
-    private fun updateLastApp(context: Context) {
+    private suspend fun updateLastApp(context: Context) {
         if (!isEnabled(context, last_used)) {
             return
         }
@@ -60,11 +65,16 @@ class LastAppSensorManager : SensorManager {
         val current = System.currentTimeMillis()
         val lastApp = usageStats.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, current - 1000 * 1000, current).maxByOrNull { it.lastTimeUsed }?.packageName ?: "none"
 
-        var appLabel = "unknown"
+        var appLabel = STATE_UNKNOWN
 
         try {
             val pm = context.packageManager
-            val appInfo = pm.getApplicationInfo(lastApp, PackageManager.GET_META_DATA)
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getApplicationInfo(lastApp, PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getApplicationInfo(lastApp, PackageManager.GET_META_DATA)
+            }
             appLabel = pm.getApplicationLabel(appInfo).toString()
         } catch (e: Exception) {
             Log.e(TAG, "Unable to get package label for: $lastApp", e)

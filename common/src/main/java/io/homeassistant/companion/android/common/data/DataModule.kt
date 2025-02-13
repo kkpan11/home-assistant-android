@@ -18,6 +18,7 @@ import io.homeassistant.companion.android.common.data.authentication.impl.Authen
 import io.homeassistant.companion.android.common.data.integration.impl.IntegrationService
 import io.homeassistant.companion.android.common.data.keychain.KeyChainRepository
 import io.homeassistant.companion.android.common.data.keychain.KeyChainRepositoryImpl
+import io.homeassistant.companion.android.common.data.keychain.KeyStoreRepositoryImpl
 import io.homeassistant.companion.android.common.data.prefs.PrefsRepository
 import io.homeassistant.companion.android.common.data.prefs.PrefsRepositoryImpl
 import io.homeassistant.companion.android.common.data.prefs.WearPrefsRepository
@@ -26,11 +27,13 @@ import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.data.servers.ServerManagerImpl
 import io.homeassistant.companion.android.common.data.wifi.WifiHelper
 import io.homeassistant.companion.android.common.data.wifi.WifiHelperImpl
-import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
+import io.homeassistant.companion.android.common.util.tts.AndroidTextToSpeechEngine
+import io.homeassistant.companion.android.common.util.tts.TextToSpeechClient
 import java.util.UUID
 import javax.inject.Named
 import javax.inject.Singleton
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -139,6 +142,16 @@ abstract class DataModule {
         @Provides
         @Singleton
         fun wifiManager(@ApplicationContext appContext: Context) = appContext.getSystemService<WifiManager>()
+
+        @Provides
+        @Singleton
+        fun packageManager(@ApplicationContext appContext: Context) = appContext.packageManager
+
+        @Provides
+        @Singleton
+        fun providesTextToSpeechClient(
+            @ApplicationContext appContext: Context
+        ): TextToSpeechClient = TextToSpeechClient(appContext, AndroidTextToSpeechEngine(appContext))
     }
 
     @Binds
@@ -155,7 +168,13 @@ abstract class DataModule {
 
     @Binds
     @Singleton
+    @Named("keyChainRepository")
     abstract fun bindKeyChainRepository(keyChainRepository: KeyChainRepositoryImpl): KeyChainRepository
+
+    @Binds
+    @Singleton
+    @Named("keyStore")
+    abstract fun bindKeyStore(keyStore: KeyStoreRepositoryImpl): KeyChainRepository
 
     @Binds
     @Singleton
