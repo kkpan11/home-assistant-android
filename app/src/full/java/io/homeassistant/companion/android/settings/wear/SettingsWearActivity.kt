@@ -5,9 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import android.view.Menu
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.concurrent.futures.await
+import androidx.core.net.toUri
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
@@ -19,40 +20,26 @@ import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.NodeClient
 import com.google.android.gms.wearable.Wearable
-import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.databinding.ActivitySettingsWearBinding
+import io.homeassistant.companion.android.settings.HelpMenuProvider
 import io.homeassistant.companion.android.settings.wear.views.SettingsWearMainView
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import io.homeassistant.companion.android.common.R as commonR
 
 class SettingsWearActivity : AppCompatActivity(), CapabilityClient.OnCapabilityChangedListener {
 
     private lateinit var binding: ActivitySettingsWearBinding
 
-    private lateinit var capabilityClient: CapabilityClient
-    private lateinit var nodeClient: NodeClient
-    private lateinit var remoteActivityHelper: RemoteActivityHelper
+    private var capabilityClient: CapabilityClient? = null
+    private var nodeClient: NodeClient? = null
+    private var remoteActivityHelper: RemoteActivityHelper? = null
 
     private var wearNodesWithApp: Set<Node>? = null
     private var allConnectedNodes: List<Node>? = null
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.menu_activity_settings_wear, menu)
-        return true
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
-        menu?.findItem(R.id.get_help)?.let {
-            it.isVisible = true
-            it.intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://companion.home-assistant.io/docs/wear-os/wear-os"))
-        }
-        return true
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,13 +49,30 @@ class SettingsWearActivity : AppCompatActivity(), CapabilityClient.OnCapabilityC
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        capabilityClient = Wearable.getCapabilityClient(this)
-        nodeClient = Wearable.getNodeClient(this)
-        remoteActivityHelper = RemoteActivityHelper(this)
+        capabilityClient = try {
+            Wearable.getCapabilityClient(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to get capability client", e)
+            null
+        }
+        nodeClient = try {
+            Wearable.getNodeClient(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to get node client", e)
+            null
+        }
+        remoteActivityHelper = try {
+            RemoteActivityHelper(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to get remote activity helper", e)
+            null
+        }
 
         binding.remoteOpenButton.setOnClickListener {
             openPlayStoreOnWearDevicesWithoutApp()
         }
+
+        addMenuProvider(HelpMenuProvider("https://companion.home-assistant.io/docs/wear-os/wear-os".toUri()))
 
         // Perform the initial update of the UI
         updateUI()
@@ -92,13 +96,13 @@ class SettingsWearActivity : AppCompatActivity(), CapabilityClient.OnCapabilityC
 
     override fun onPause() {
         super.onPause()
-        capabilityClient.removeListener(this, CAPABILITY_WEAR_APP)
+        capabilityClient?.removeListener(this, CAPABILITY_WEAR_APP)
     }
 
     override fun onResume() {
         super.onResume()
         title = getString(commonR.string.wear_os_settings_title)
-        capabilityClient.addListener(this, CAPABILITY_WEAR_APP)
+        capabilityClient?.addListener(this, CAPABILITY_WEAR_APP)
     }
 
     /*
@@ -117,11 +121,11 @@ class SettingsWearActivity : AppCompatActivity(), CapabilityClient.OnCapabilityC
     private suspend fun findWearDevicesWithApp() {
         try {
             val capabilityInfo = capabilityClient
-                .getCapability(CAPABILITY_WEAR_APP, CapabilityClient.FILTER_ALL)
-                .await()
+                ?.getCapability(CAPABILITY_WEAR_APP, CapabilityClient.FILTER_ALL)
+                ?.await()
 
             withContext(Dispatchers.Main) {
-                wearNodesWithApp = capabilityInfo.nodes
+                wearNodesWithApp = capabilityInfo?.nodes
                 Log.d(TAG, "Capable Nodes: $wearNodesWithApp")
                 updateUI()
             }
@@ -135,7 +139,7 @@ class SettingsWearActivity : AppCompatActivity(), CapabilityClient.OnCapabilityC
 
     private suspend fun findAllWearDevices() {
         try {
-            val connectedNodes = nodeClient.connectedNodes.await()
+            val connectedNodes = nodeClient?.connectedNodes?.await()
 
             withContext(Dispatchers.Main) {
                 allConnectedNodes = connectedNodes
@@ -198,11 +202,11 @@ class SettingsWearActivity : AppCompatActivity(), CapabilityClient.OnCapabilityC
             lifecycleScope.launch {
                 try {
                     remoteActivityHelper
-                        .startRemoteActivity(
+                        ?.startRemoteActivity(
                             targetIntent = intent,
                             targetNodeId = node.id
                         )
-                        .await()
+                        ?.await()
 
                     Toast.makeText(
                         this@SettingsWearActivity,

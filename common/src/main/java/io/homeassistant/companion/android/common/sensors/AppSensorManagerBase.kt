@@ -9,8 +9,8 @@ import android.os.Process
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
-import java.math.RoundingMode
 import io.homeassistant.companion.android.common.R as commonR
+import java.math.RoundingMode
 
 abstract class AppSensorManagerBase : SensorManager {
     companion object {
@@ -79,6 +79,7 @@ abstract class AppSensorManagerBase : SensorManager {
             commonR.string.basic_sensor_name_app_standby,
             commonR.string.sensor_description_app_standby,
             "mdi:android",
+            deviceClass = "enum",
             docsLink = "https://companion.home-assistant.io/docs/core/sensors#app-usage-sensors",
             entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
         )
@@ -89,6 +90,7 @@ abstract class AppSensorManagerBase : SensorManager {
             commonR.string.basic_sensor_name_app_importance,
             commonR.string.sensor_description_app_importance,
             "mdi:android",
+            deviceClass = "enum",
             docsLink = "https://companion.home-assistant.io/docs/core/sensors#app-importance-sensor",
             entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC
         )
@@ -126,7 +128,7 @@ abstract class AppSensorManagerBase : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         val myUid = Process.myUid()
@@ -146,7 +148,7 @@ abstract class AppSensorManagerBase : SensorManager {
 
     abstract fun getCurrentVersion(): String
 
-    private fun updateCurrentVersion(context: Context) {
+    private suspend fun updateCurrentVersion(context: Context) {
         if (!isEnabled(context, currentVersion)) {
             return
         }
@@ -162,7 +164,7 @@ abstract class AppSensorManagerBase : SensorManager {
         )
     }
 
-    private fun updateAppRxGb(context: Context, appUid: Int) {
+    private suspend fun updateAppRxGb(context: Context, appUid: Int) {
         if (!isEnabled(context, app_rx_gb)) {
             return
         }
@@ -183,7 +185,7 @@ abstract class AppSensorManagerBase : SensorManager {
         )
     }
 
-    private fun updateAppTxGb(context: Context, appUid: Int) {
+    private suspend fun updateAppTxGb(context: Context, appUid: Int) {
         if (!isEnabled(context, app_tx_gb)) {
             return
         }
@@ -204,7 +206,7 @@ abstract class AppSensorManagerBase : SensorManager {
         )
     }
 
-    private fun updateAppMemory(context: Context) {
+    private suspend fun updateAppMemory(context: Context) {
         if (!isEnabled(context, app_memory)) {
             return
         }
@@ -227,7 +229,7 @@ abstract class AppSensorManagerBase : SensorManager {
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
-    private fun updateAppInactive(context: Context, usageStatsManager: UsageStatsManager) {
+    private suspend fun updateAppInactive(context: Context, usageStatsManager: UsageStatsManager) {
         if (!isEnabled(context, app_inactive)) {
             return
         }
@@ -246,7 +248,7 @@ abstract class AppSensorManagerBase : SensorManager {
     }
 
     @RequiresApi(Build.VERSION_CODES.P)
-    private fun updateAppStandbyBucket(context: Context, usageStatsManager: UsageStatsManager) {
+    private suspend fun updateAppStandbyBucket(context: Context, usageStatsManager: UsageStatsManager) {
         if (!isEnabled(context, app_standby_bucket)) {
             return
         }
@@ -265,11 +267,13 @@ abstract class AppSensorManagerBase : SensorManager {
             app_standby_bucket,
             appStandbyBucket,
             app_standby_bucket.statelessIcon,
-            mapOf()
+            mapOf(
+                "options" to listOf("active", "frequent", "rare", "restricted", "working_set", "never")
+            )
         )
     }
 
-    private fun updateImportanceCheck(context: Context) {
+    private suspend fun updateImportanceCheck(context: Context) {
         if (!isEnabled(context, app_importance)) {
             return
         }
@@ -319,7 +323,12 @@ abstract class AppSensorManagerBase : SensorManager {
             app_importance,
             importance,
             app_importance.statelessIcon,
-            mapOf()
+            mapOf(
+                "options" to listOf(
+                    "cached", "cant_save_state", "foreground", "foreground_service", "gone",
+                    "perceptible", "service", "top_sleeping", "visible", "not_running"
+                )
+            )
         )
     }
 }

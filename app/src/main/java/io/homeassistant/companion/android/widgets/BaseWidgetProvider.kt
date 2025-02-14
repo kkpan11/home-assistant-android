@@ -9,15 +9,16 @@ import android.content.IntentFilter
 import android.os.Bundle
 import android.util.Log
 import android.widget.RemoteViews
+import androidx.core.content.ContextCompat
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.servers.ServerManager
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
  * A widget provider class for widgets that update based on entity state changes.
@@ -36,7 +37,7 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
     }
 
     @Inject
-    protected lateinit var serverManager: ServerManager
+    lateinit var serverManager: ServerManager
 
     private var thisSetScope = false
     protected var lastIntent = ""
@@ -95,9 +96,11 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
             val allWidgets = getAllWidgetIdsWithEntities(context)
             val widgetsWithDifferentEntities = allWidgets.filter { it.value.second != widgetEntities[it.key] }
             if (widgetsWithDifferentEntities.isNotEmpty()) {
-                context.applicationContext.registerReceiver(
+                ContextCompat.registerReceiver(
+                    context.applicationContext,
                     this@BaseWidgetProvider,
-                    IntentFilter(Intent.ACTION_SCREEN_OFF)
+                    IntentFilter(Intent.ACTION_SCREEN_OFF),
+                    ContextCompat.RECEIVER_NOT_EXPORTED
                 )
 
                 widgetsWithDifferentEntities.forEach { (id, pair) ->
@@ -139,9 +142,8 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
         context: Context
     ) {
         val widgetProvider = getWidgetProvider(context)
-        val systemWidgetIds = AppWidgetManager.getInstance(context)
-            .getAppWidgetIds(widgetProvider)
-            .toSet()
+        val appWidgetManager = AppWidgetManager.getInstance(context) ?: return
+        val systemWidgetIds = appWidgetManager.getAppWidgetIds(widgetProvider).toSet()
         val dbWidgetIds = getAllWidgetIdsWithEntities(context).keys
 
         val invalidWidgetIds = dbWidgetIds.minus(systemWidgetIds)

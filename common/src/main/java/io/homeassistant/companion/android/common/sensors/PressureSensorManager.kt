@@ -8,8 +8,8 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager.SENSOR_DELAY_NORMAL
 import android.util.Log
 import androidx.core.content.getSystemService
-import java.math.RoundingMode
 import io.homeassistant.companion.android.common.R as commonR
+import java.math.RoundingMode
 
 class PressureSensorManager : SensorManager, SensorEventListener {
     companion object {
@@ -47,7 +47,7 @@ class PressureSensorManager : SensorManager, SensorEventListener {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         latestContext = context
         updatePressureSensor()
     }
@@ -57,7 +57,7 @@ class PressureSensorManager : SensorManager, SensorEventListener {
         return packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_BAROMETER)
     }
 
-    private fun updatePressureSensor() {
+    private suspend fun updatePressureSensor() {
         if (!isEnabled(latestContext, pressureSensor)) {
             return
         }

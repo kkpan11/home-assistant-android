@@ -5,29 +5,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.wear.compose.material.Icon
-import androidx.wear.compose.material.PositionIndicator
-import androidx.wear.compose.material.Scaffold
-import androidx.wear.compose.material.ScalingLazyListState
-import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.ToggleChip
-import androidx.wear.compose.material.ToggleChipDefaults
-import androidx.wear.compose.material.items
-import androidx.wear.compose.material.rememberScalingLazyListState
+import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.material3.SwitchButton
+import androidx.wear.compose.material3.Text
 import com.mikepenz.iconics.compose.Image
-import com.mikepenz.iconics.typeface.library.community.material.CommunityMaterial
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.integration.getIcon
 import io.homeassistant.companion.android.home.MainViewModel
 import io.homeassistant.companion.android.theme.WearAppTheme
-import io.homeassistant.companion.android.theme.wearColorPalette
+import io.homeassistant.companion.android.theme.getSwitchButtonColors
+import io.homeassistant.companion.android.theme.wearColorScheme
 import io.homeassistant.companion.android.views.ExpandableListHeader
 import io.homeassistant.companion.android.views.ListHeader
 import io.homeassistant.companion.android.views.ThemeLazyColumn
 import io.homeassistant.companion.android.views.rememberExpandedStates
-import io.homeassistant.companion.android.common.R as commonR
 
 @Composable
 fun SetFavoritesView(
@@ -38,41 +31,28 @@ fun SetFavoritesView(
     // Remember expanded state of each header
     val expandedStates = rememberExpandedStates(mainViewModel.supportedDomains())
 
-    val scalingLazyListState: ScalingLazyListState = rememberScalingLazyListState()
-
     WearAppTheme {
-        Scaffold(
-            positionIndicator = {
-                if (scalingLazyListState.isScrollInProgress) {
-                    PositionIndicator(scalingLazyListState = scalingLazyListState)
-                }
-            },
-            timeText = { TimeText(scalingLazyListState = scalingLazyListState) }
-        ) {
-            ThemeLazyColumn(
-                state = scalingLazyListState
-            ) {
-                item {
-                    ListHeader(id = commonR.string.set_favorite)
-                }
-                for (domain in mainViewModel.entitiesByDomainOrder) {
-                    val entities = mainViewModel.entitiesByDomain[domain].orEmpty()
-                    if (entities.isNotEmpty()) {
-                        item {
-                            ExpandableListHeader(
-                                string = mainViewModel.stringForDomain(domain)!!,
-                                key = domain,
-                                expandedStates = expandedStates
+        ThemeLazyColumn {
+            item {
+                ListHeader(id = commonR.string.set_favorite)
+            }
+            for (domain in mainViewModel.entitiesByDomainOrder) {
+                val entities = mainViewModel.entitiesByDomain[domain].orEmpty()
+                if (entities.isNotEmpty()) {
+                    item {
+                        ExpandableListHeader(
+                            string = mainViewModel.stringForDomain(domain)!!,
+                            key = domain,
+                            expandedStates = expandedStates
+                        )
+                    }
+                    if (expandedStates[domain] == true) {
+                        items(entities, key = { it.entityId }) { entity ->
+                            FavoriteToggleChip(
+                                entity = entity,
+                                favoriteEntityIds = favoriteEntityIds,
+                                onFavoriteSelected = onFavoriteSelected
                             )
-                        }
-                        if (expandedStates[domain] == true) {
-                            items(entities, key = { it.entityId }) { entity ->
-                                FavoriteToggleChip(
-                                    entity = entity,
-                                    favoriteEntityIds = favoriteEntityIds,
-                                    onFavoriteSelected = onFavoriteSelected
-                                )
-                            }
                         }
                     }
                 }
@@ -92,17 +72,17 @@ private fun FavoriteToggleChip(
 
     val entityId = entity.entityId
     val checked = favoriteEntityIds.contains(entityId)
-    ToggleChip(
+    SwitchButton(
         checked = checked,
         onCheckedChange = {
             onFavoriteSelected(entityId, it)
         },
         modifier = Modifier
             .fillMaxWidth(),
-        appIcon = {
+        icon = {
             Image(
-                asset = iconBitmap ?: CommunityMaterial.Icon.cmd_bookmark,
-                colorFilter = ColorFilter.tint(wearColorPalette.onSurface)
+                asset = iconBitmap,
+                colorFilter = ColorFilter.tint(wearColorScheme.onSurface)
             )
         },
         label = {
@@ -112,15 +92,6 @@ private fun FavoriteToggleChip(
                 overflow = TextOverflow.Ellipsis
             )
         },
-        toggleControl = {
-            Icon(
-                imageVector = ToggleChipDefaults.switchIcon(checked),
-                contentDescription = if (checked) {
-                    stringResource(commonR.string.enabled)
-                } else {
-                    stringResource(commonR.string.disabled)
-                }
-            )
-        }
+        colors = getSwitchButtonColors()
     )
 }

@@ -19,12 +19,13 @@ import androidx.health.services.client.data.PassiveListenerConfig
 import androidx.health.services.client.data.PassiveMonitoringCapabilities
 import androidx.health.services.client.data.UserActivityInfo
 import androidx.health.services.client.data.UserActivityState
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.sensors.SensorManager
+import io.homeassistant.companion.android.common.util.STATE_UNKNOWN
 import io.homeassistant.companion.android.database.AppDatabase
+import java.time.Instant
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.runBlocking
-import java.time.Instant
-import io.homeassistant.companion.android.common.R as commonR
 
 @RequiresApi(Build.VERSION_CODES.R)
 class HealthServicesSensorManager : SensorManager {
@@ -38,6 +39,7 @@ class HealthServicesSensorManager : SensorManager {
             commonR.string.sensor_name_activity_state,
             commonR.string.sensor_description_activity_state,
             "mdi:account",
+            deviceClass = "enum",
             entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
             updateType = SensorManager.BasicSensor.UpdateType.INTENT
         )
@@ -49,6 +51,7 @@ class HealthServicesSensorManager : SensorManager {
             "mdi:stairs",
             unitOfMeasurement = "floors",
             entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            stateClass = SensorManager.STATE_CLASS_TOTAL_INCREASING,
             updateType = SensorManager.BasicSensor.UpdateType.WORKER
         )
         private val dailyDistance = SensorManager.BasicSensor(
@@ -60,6 +63,7 @@ class HealthServicesSensorManager : SensorManager {
             "distance",
             unitOfMeasurement = "m",
             entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            stateClass = SensorManager.STATE_CLASS_TOTAL_INCREASING,
             updateType = SensorManager.BasicSensor.UpdateType.WORKER
         )
         private val dailyCalories = SensorManager.BasicSensor(
@@ -68,8 +72,10 @@ class HealthServicesSensorManager : SensorManager {
             commonR.string.sensor_name_daily_calories,
             commonR.string.sensor_description_daily_calories,
             "mdi:fire",
-            unitOfMeasurement = "kcal",
+            "energy",
+            unitOfMeasurement = "cal",
             entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            stateClass = SensorManager.STATE_CLASS_TOTAL_INCREASING,
             updateType = SensorManager.BasicSensor.UpdateType.WORKER
         )
         private val dailySteps = SensorManager.BasicSensor(
@@ -80,6 +86,7 @@ class HealthServicesSensorManager : SensorManager {
             "mdi:shoe-print",
             unitOfMeasurement = "steps",
             entityCategory = SensorManager.ENTITY_CATEGORY_DIAGNOSTIC,
+            stateClass = SensorManager.STATE_CLASS_TOTAL_INCREASING,
             updateType = SensorManager.BasicSensor.UpdateType.WORKER
         )
     }
@@ -138,12 +145,12 @@ class HealthServicesSensorManager : SensorManager {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         latestContext = context
         updateHealthServices()
     }
 
-    private fun updateHealthServices() {
+    private suspend fun updateHealthServices() {
         val activityStateEnabled = isEnabled(latestContext, userActivityState)
         val dailyFloorEnabled = isEnabled(latestContext, dailyFloors)
         val dailyDistanceEnabled = isEnabled(latestContext, dailyDistance)
@@ -199,12 +206,13 @@ class HealthServicesSensorManager : SensorManager {
                         UserActivityState.USER_ACTIVITY_ASLEEP -> "asleep"
                         UserActivityState.USER_ACTIVITY_PASSIVE -> "passive"
                         UserActivityState.USER_ACTIVITY_EXERCISE -> "exercise"
-                        else -> "unknown"
+                        else -> STATE_UNKNOWN
                     },
                     getActivityIcon(info),
                     mapOf(
                         "time" to info.stateChangeTime,
-                        "exercise_type" to info.exerciseInfo?.exerciseType?.name
+                        "exercise_type" to info.exerciseInfo?.exerciseType?.name,
+                        "options" to listOf("asleep", "passive", "exercise")
                     ),
                     forceUpdate = forceUpdate
                 )

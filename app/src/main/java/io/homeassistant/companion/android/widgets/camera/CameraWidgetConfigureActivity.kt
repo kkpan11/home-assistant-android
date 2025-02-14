@@ -1,5 +1,6 @@
 package io.homeassistant.companion.android.widgets.camera
 
+import android.R
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
@@ -9,23 +10,25 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.Spinner
 import android.widget.Toast
 import androidx.core.content.getSystemService
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.integration.domain
 import io.homeassistant.companion.android.database.widget.CameraWidgetDao
+import io.homeassistant.companion.android.database.widget.WidgetTapAction
 import io.homeassistant.companion.android.databinding.WidgetCameraConfigureBinding
 import io.homeassistant.companion.android.settings.widgets.ManageWidgetsViewModel
 import io.homeassistant.companion.android.widgets.BaseWidgetConfigureActivity
 import io.homeassistant.companion.android.widgets.common.SingleItemArrayAdapter
+import javax.inject.Inject
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
 
 @AndroidEntryPoint
 class CameraWidgetConfigureActivity : BaseWidgetConfigureActivity() {
@@ -54,8 +57,8 @@ class CameraWidgetConfigureActivity : BaseWidgetConfigureActivity() {
 
     private var entityAdapter: SingleItemArrayAdapter<Entity<Any>>? = null
 
-    public override fun onCreate(icicle: Bundle?) {
-        super.onCreate(icicle)
+    public override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
         // Set the result to CANCELED.  This will cause the widget host to cancel
         // out of the widget placement if the user presses the back button.
@@ -104,9 +107,11 @@ class CameraWidgetConfigureActivity : BaseWidgetConfigureActivity() {
             finish()
             return
         }
+        initTapActionsSpinner()
 
         val cameraWidget = cameraWidgetDao.get(appWidgetId)
         if (cameraWidget != null) {
+            setCurrentTapAction(tapAction = cameraWidget.tapAction)
             binding.widgetTextConfigEntityId.setText(cameraWidget.entityId)
             binding.addButton.setText(commonR.string.update_widget)
             val entity = runBlocking {
@@ -136,7 +141,7 @@ class CameraWidgetConfigureActivity : BaseWidgetConfigureActivity() {
             lifecycleScope.launch {
                 try {
                     val fetchedEntities = serverManager.integrationRepository(server.id).getEntities().orEmpty()
-                        .filter { it.domain == "camera" }
+                        .filter { it.domain == "camera" || it.domain == "image" }
                     entities[server.id] = fetchedEntities
                     if (server.id == selectedServerId) setAdapterEntities(server.id)
                 } catch (e: Exception) {
@@ -199,6 +204,10 @@ class CameraWidgetConfigureActivity : BaseWidgetConfigureActivity() {
                 CameraWidget.EXTRA_ENTITY_ID,
                 selectedEntity!!.entityId
             )
+            intent.putExtra(
+                CameraWidget.EXTRA_TAP_ACTION,
+                if (binding.tapActionList.selectedItemPosition == 0) WidgetTapAction.REFRESH else WidgetTapAction.OPEN
+            )
 
             context.sendBroadcast(intent)
 
@@ -214,9 +223,18 @@ class CameraWidgetConfigureActivity : BaseWidgetConfigureActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    private fun initTapActionsSpinner() {
+        val tapActionValues = listOf(getString(commonR.string.refresh), getString(commonR.string.widget_tap_action_open))
+        binding.tapActionList.adapter = ArrayAdapter(this, R.layout.simple_spinner_dropdown_item, tapActionValues)
+    }
+
+    private fun setCurrentTapAction(tapAction: WidgetTapAction) {
+        binding.tapActionList.setSelection(if (tapAction == WidgetTapAction.REFRESH) 0 else 1)
+    }
+
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent != null && intent.extras != null && intent.hasExtra(PIN_WIDGET_CALLBACK)) {
+        if (intent.extras != null && intent.hasExtra(PIN_WIDGET_CALLBACK)) {
             appWidgetId = intent.extras!!.getInt(
                 AppWidgetManager.EXTRA_APPWIDGET_ID,
                 AppWidgetManager.INVALID_APPWIDGET_ID

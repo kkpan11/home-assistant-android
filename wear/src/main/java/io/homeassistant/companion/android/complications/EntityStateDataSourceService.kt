@@ -13,17 +13,17 @@ import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import com.mikepenz.iconics.IconicsDrawable
-import com.mikepenz.iconics.typeface.library.community.material.CommunityMaterial
 import com.mikepenz.iconics.utils.colorInt
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.common.R
+import io.homeassistant.companion.android.common.data.integration.canSupportPrecision
 import io.homeassistant.companion.android.common.data.integration.friendlyName
 import io.homeassistant.companion.android.common.data.integration.friendlyState
 import io.homeassistant.companion.android.common.data.integration.getIcon
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.database.wear.EntityStateComplicationsDao
-import retrofit2.HttpException
 import javax.inject.Inject
+import retrofit2.HttpException
 
 @AndroidEntryPoint
 class EntityStateDataSourceService : SuspendingComplicationDataSourceService() {
@@ -59,7 +59,16 @@ class EntityStateDataSourceService : SuspendingComplicationDataSourceService() {
             }
         }
 
-        val icon = entity.getIcon(applicationContext) ?: CommunityMaterial.Icon.cmd_bookmark
+        val entityOptions = if (
+            entity.canSupportPrecision() &&
+            serverManager.getServer()?.version?.isAtLeast(2023, 3) == true
+        ) {
+            serverManager.webSocketRepository().getEntityRegistryFor(entityId)?.options
+        } else {
+            null
+        }
+
+        val icon = entity.getIcon(applicationContext)
         val iconBitmap = IconicsDrawable(this, icon).apply {
             colorInt = Color.WHITE
         }.toBitmap()
@@ -69,7 +78,15 @@ class EntityStateDataSourceService : SuspendingComplicationDataSourceService() {
         } else {
             null
         }
-        val text = PlainComplicationText.Builder(entity.friendlyState(this)).build()
+
+        val text = PlainComplicationText.Builder(
+            entity.friendlyState(
+                this,
+                entityOptions,
+                appendUnitOfMeasurement = settings.showUnit
+            )
+        ).build()
+
         val contentDescription = PlainComplicationText.Builder(getText(R.string.complication_entity_state_content_description)).build()
         val monochromaticImage = MonochromaticImage.Builder(Icon.createWithBitmap(iconBitmap)).build()
         val tapAction = ComplicationReceiver.getComplicationToggleIntent(this, request.complicationInstanceId)
@@ -146,7 +163,11 @@ class EntityStateDataSourceService : SuspendingComplicationDataSourceService() {
         setTapAction: Boolean = false
     ): ComplicationData {
         val text = PlainComplicationText.Builder(
-            if (setTapAction) { "+" } else { getText(textRes) }
+            if (setTapAction) {
+                "+"
+            } else {
+                getText(textRes)
+            }
         ).build()
         val contentDescription = PlainComplicationText.Builder(getText(R.string.complication_entity_state_content_description)).build()
         val tapAction = if (setTapAction) {

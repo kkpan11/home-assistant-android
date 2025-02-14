@@ -1,8 +1,8 @@
 package io.homeassistant.companion.android.sensors
 
 import android.content.Context
-import io.homeassistant.companion.android.common.sensors.SensorManager
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.sensors.SensorManager
 
 class AndroidAutoSensorManager : SensorManager {
 
@@ -17,7 +17,7 @@ class AndroidAutoSensorManager : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         // Noop
     }
 }

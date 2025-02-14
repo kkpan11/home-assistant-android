@@ -3,14 +3,15 @@ package io.homeassistant.companion.android.webview
 import android.content.Context
 import android.content.IntentSender
 import androidx.activity.result.ActivityResult
-import io.homeassistant.companion.android.matter.MatterFrontendCommissioningStatus
 import kotlinx.coroutines.flow.Flow
+import org.json.JSONObject
 
 interface WebViewPresenter {
 
     fun onViewReady(path: String?)
 
     fun getActiveServer(): Int
+    fun getActiveServerName(): String?
     fun updateActiveServer()
     fun setActiveServer(id: Int)
     fun switchActiveServer(id: Int)
@@ -29,6 +30,7 @@ interface WebViewPresenter {
 
     fun isKeepScreenOnEnabled(): Boolean
 
+    fun getPageZoomLevel(): Int
     fun isPinchToZoomEnabled(): Boolean
     fun isWebViewDebugEnabled(): Boolean
 
@@ -41,6 +43,10 @@ interface WebViewPresenter {
 
     fun sessionTimeOut(): Int
 
+    fun onExternalBusMessage(message: JSONObject)
+
+    fun onStart(context: Context)
+
     fun onFinish()
 
     fun isSsidUsed(): Boolean
@@ -51,8 +57,26 @@ interface WebViewPresenter {
 
     fun appCanCommissionMatterDevice(): Boolean
     fun startCommissioningMatterDevice(context: Context)
-    fun getMatterCommissioningStatusFlow(): Flow<MatterFrontendCommissioningStatus>
-    fun getMatterCommissioningIntent(): IntentSender?
-    fun onMatterCommissioningIntentResult(context: Context, result: ActivityResult)
-    fun confirmMatterCommissioningError()
+
+    /** @return `true` if the app can send this device's preferred Thread credential to the server */
+    fun appCanExportThreadCredentials(): Boolean
+    fun exportThreadCredentials(context: Context)
+    fun getMatterThreadStepFlow(): Flow<MatterThreadStep>
+    fun getMatterThreadIntent(): IntentSender?
+    fun onMatterThreadIntentResult(context: Context, result: ActivityResult)
+    fun finishMatterThreadFlow()
+
+    /** @return `true` if the app should prompt the user for Improv permissions before scanning */
+    suspend fun shouldShowImprovPermissions(): Boolean
+
+    /**
+     * @return Improv permission the app should request directly, without showing a prompt.
+     * This may occur when one of two Bluetooth related permissions is granted and the other one
+     * is not. The system should automatically grant this when requested.
+     * */
+    fun shouldRequestImprovPermission(): String?
+
+    /** @return `true` if the app tried starting scanning or `false` if it was missing permissions */
+    fun startScanningForImprov(): Boolean
+    fun stopScanningForImprov(force: Boolean)
 }

@@ -1,21 +1,19 @@
-import com.github.triplet.gradle.androidpublisher.ResolutionStrategy
 import com.google.gms.googleservices.GoogleServicesPlugin.GoogleServicesPluginConfig
 
 plugins {
-    id("com.android.application")
-    id("kotlin-android")
-    id("kotlin-kapt")
-    id("kotlin-parcelize")
-    id("com.github.triplet.play")
-    id("com.google.gms.google-services")
-    kotlin("kapt")
-    id("dagger.hilt.android.plugin")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.compose.compiler)
 }
 
 android {
     namespace = "io.homeassistant.companion.android"
 
-    compileSdk = 33
+    compileSdk = libs.versions.androidSdk.compile.get().toInt()
 
     ndkVersion = "21.3.6528147"
 
@@ -23,8 +21,8 @@ android {
 
     defaultConfig {
         applicationId = "io.homeassistant.companion.android"
-        minSdk = 29
-        targetSdk = 33
+        minSdk = libs.versions.androidSdk.automotive.min.get().toInt()
+        targetSdk = libs.versions.androidSdk.target.get().toInt()
 
         versionName = project.version.toString()
         // We add 2 because the app, wear (+1) and automotive versions need to have different version codes.
@@ -44,6 +42,9 @@ android {
         getByName("main") {
             java {
                 srcDirs("../app/src/main/java")
+            }
+            assets {
+                srcDirs("../app/src/main/assets")
             }
             res {
                 srcDirs("../app/src/main/res")
@@ -75,19 +76,17 @@ android {
     buildFeatures {
         viewBinding = true
         compose = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.4.7"
+        buildConfig = true
     }
 
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = libs.versions.javaVersion.get()
     }
 
     compileOptions {
-        sourceCompatibility(JavaVersion.VERSION_11)
-        targetCompatibility(JavaVersion.VERSION_11)
+        isCoreLibraryDesugaringEnabled = true
+        sourceCompatibility(libs.versions.javaVersion.get())
+        targetCompatibility(libs.versions.javaVersion.get())
     }
 
     signingConfigs {
@@ -130,12 +129,6 @@ android {
         defaultConfig.buildConfigField("String[]", "APPLICATION_IDS", "{$values}")
     }
 
-    playConfigs {
-        register("minimal") {
-            enabled.set(false)
-        }
-    }
-
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -150,94 +143,84 @@ android {
         abortOnError = false
         disable += "MissingTranslation"
     }
-
-    kapt {
-        correctErrorTypes = true
-    }
-}
-
-play {
-    serviceAccountCredentials.set(file("playStorePublishServiceCredentialsFile.json"))
-    track.set("automotive:internal")
-    resolutionStrategy.set(ResolutionStrategy.IGNORE)
-    // We will depend on the wear commit.
-    commit.set(true)
 }
 
 dependencies {
     implementation(project(":common"))
 
-    implementation("com.github.Dimezis:BlurView:version-1.6.6")
-    implementation("org.altbeacon:android-beacon-library:2.19.5")
-    implementation("com.maltaisn:icondialog:3.3.0")
-    implementation("com.maltaisn:iconpack-community-material:5.3.45")
+    coreLibraryDesugaring(libs.tools.desugar.jdk)
 
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.8.22")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:1.8.21")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1")
-    "fullImplementation"("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.1")
+    implementation(libs.blurView)
+    "fullImplementation"(libs.androidx.health.connect.client)
 
-    implementation("com.google.dagger:hilt-android:2.46.1")
-    kapt("com.google.dagger:hilt-android-compiler:2.46.1")
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+    "fullImplementation"(libs.kotlinx.coroutines.play.services)
 
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.recyclerview:recyclerview:1.3.0")
-    implementation("androidx.preference:preference-ktx:1.2.0")
-    implementation("com.google.android.material:material:1.9.0")
-    implementation("androidx.fragment:fragment-ktx:1.5.7")
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
 
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.5")
-    implementation("com.squareup.okhttp3:okhttp:4.11.0")
-    implementation("com.squareup.picasso:picasso:2.8")
+    implementation(libs.appcompat)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.constraintlayout)
+    implementation(libs.recyclerview)
+    implementation(libs.preference.ktx)
+    implementation(libs.material)
+    implementation(libs.fragment.ktx)
 
-    "fullImplementation"("com.google.android.gms:play-services-location:21.0.1")
-    "fullImplementation"("com.google.android.gms:play-services-home:16.0.0")
-    "fullImplementation"("com.google.android.gms:play-services-threadnetwork:16.0.0")
-    "fullImplementation"(platform("com.google.firebase:firebase-bom:32.1.0"))
-    "fullImplementation"("com.google.firebase:firebase-messaging")
-    "fullImplementation"("io.sentry:sentry-android:6.24.0")
-    "fullImplementation"("com.google.android.gms:play-services-wearable:18.0.0")
-    "fullImplementation"("androidx.wear:wear-remote-interactions:1.0.0")
+    implementation(libs.jackson.module.kotlin)
+    implementation(libs.okhttp)
 
-    implementation("androidx.biometric:biometric:1.1.0")
-    implementation("androidx.webkit:webkit:1.7.0")
+    implementation(libs.bundles.coil)
 
-    implementation("com.google.android.exoplayer:exoplayer-core:2.18.7")
-    implementation("com.google.android.exoplayer:exoplayer-hls:2.18.7")
-    implementation("com.google.android.exoplayer:exoplayer-ui:2.18.7")
-    "fullImplementation"("com.google.android.exoplayer:extension-cronet:2.18.7")
-    "minimalImplementation"("com.google.android.exoplayer:extension-cronet:2.18.7") {
+    "fullImplementation"(libs.play.services.location)
+    "fullImplementation"(libs.play.services.home)
+    "fullImplementation"(libs.play.services.threadnetwork)
+    "fullImplementation"(platform(libs.firebase.bom))
+    "fullImplementation"(libs.firebase.messaging)
+    "fullImplementation"(libs.sentry.android)
+    "fullImplementation"(libs.play.services.wearable)
+    "fullImplementation"(libs.wear.remote.interactions)
+
+    implementation(libs.biometric)
+    implementation(libs.webkit)
+
+    implementation(libs.bundles.media3)
+    "fullImplementation"(libs.media3.datasource.cronet)
+    "minimalImplementation"(libs.media3.datasource.cronet) {
         exclude(group = "com.google.android.gms", module = "play-services-cronet")
     }
-    "minimalImplementation"("org.chromium.net:cronet-embedded:113.5672.61")
+    "minimalImplementation"(libs.cronet.embedded)
 
-    implementation(platform("androidx.compose:compose-bom:2023.05.01"))
-    implementation("androidx.compose.animation:animation")
-    implementation("androidx.compose.compiler:compiler:1.4.7")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material:material")
-    implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.compose.runtime:runtime")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling")
-    implementation("androidx.activity:activity-compose:1.7.1")
-    implementation("androidx.navigation:navigation-compose:2.5.3")
-    implementation("com.google.accompanist:accompanist-systemuicontroller:0.30.1")
-    implementation("com.google.accompanist:accompanist-themeadapter-material:0.30.1")
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.animation)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material)
+    implementation(libs.compose.material.icons.core)
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.uiTooling)
+    implementation(libs.activity.compose)
+    implementation(libs.navigation.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
-    implementation("com.mikepenz:iconics-core:5.4.0")
-    implementation("com.mikepenz:iconics-compose:5.4.0")
-    implementation("com.mikepenz:community-material-typeface:7.0.96.0-kotlin@aar")
+    implementation(libs.iconics.core)
+    implementation(libs.iconics.compose)
+    implementation(libs.community.material.typeface)
 
-    implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
-    implementation("com.github.AppDevNext:ChangeLog:3.4")
+    implementation(libs.bundles.paging)
 
-    implementation("androidx.car.app:app:1.3.0-rc01")
-    implementation("androidx.car.app:app-automotive:1.3.0-rc01")
+    implementation(libs.reorderable)
+    implementation(libs.changeLog)
+
+    implementation(libs.zxing)
+    implementation(libs.improv)
+
+    implementation(libs.car.core)
+    implementation(libs.car.automotive)
 }
 
 // Disable to fix memory leak and be compatible with the configuration cache.

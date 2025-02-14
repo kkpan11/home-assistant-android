@@ -12,38 +12,27 @@ import android.service.controls.templates.RangeTemplate
 import android.service.controls.templates.ToggleRangeTemplate
 import android.service.controls.templates.ToggleTemplate
 import androidx.annotation.RequiresApi
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.integration.IntegrationRepository
 import io.homeassistant.companion.android.common.data.integration.getCoverPosition
-import io.homeassistant.companion.android.common.data.websocket.impl.entities.AreaRegistryResponse
-import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.data.integration.isActive
 
 @RequiresApi(Build.VERSION_CODES.R)
 object CoverControl : HaControl {
-    const val SUPPORT_SET_POSITION = 4
+    private const val SUPPORT_SET_POSITION = 4
     override fun provideControlFeatures(
         context: Context,
         control: Control.StatefulBuilder,
         entity: Entity<Map<String, Any>>,
-        area: AreaRegistryResponse?,
-        baseUrl: String?
+        info: HaControlInfo
     ): Control.StatefulBuilder {
-        control.setStatusText(
-            when (entity.state) {
-                "closed" -> context.getString(commonR.string.state_closed)
-                "closing" -> context.getString(commonR.string.state_closing)
-                "open" -> context.getString(commonR.string.state_open)
-                "opening" -> context.getString(commonR.string.state_opening)
-                "unavailable" -> context.getString(commonR.string.state_unavailable)
-                else -> entity.state
-            }
-        )
         val position = entity.getCoverPosition()
         control.setControlTemplate(
             if ((entity.attributes["supported_features"] as Int) and SUPPORT_SET_POSITION == SUPPORT_SET_POSITION) {
                 ToggleRangeTemplate(
                     entity.entityId,
-                    entity.state in listOf("open", "opening"),
+                    entity.isActive(),
                     "",
                     RangeTemplate(
                         entity.entityId,
@@ -58,7 +47,7 @@ object CoverControl : HaControl {
                 ToggleTemplate(
                     entity.entityId,
                     ControlButton(
-                        entity.state in listOf("open", "opening"),
+                        entity.isActive(),
                         "Description"
                     )
                 )
@@ -89,7 +78,7 @@ object CoverControl : HaControl {
     ): Boolean {
         return when (action) {
             is BooleanAction -> {
-                integrationRepository.callService(
+                integrationRepository.callAction(
                     action.templateId.split(".")[0],
                     if ((action as? BooleanAction)?.newState == true) "open_cover" else "close_cover",
                     hashMapOf(
@@ -100,7 +89,7 @@ object CoverControl : HaControl {
             }
             is FloatAction -> {
                 val convertPosition = action.newValue
-                integrationRepository.callService(
+                integrationRepository.callAction(
                     action.templateId.split(".")[0],
                     "set_cover_position",
                     hashMapOf(

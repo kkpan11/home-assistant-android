@@ -5,11 +5,41 @@ import android.car.drivingstate.CarUxRestrictionsManager
 import android.content.Intent
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.content.pm.PackageManager
+import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import dagger.hilt.android.AndroidEntryPoint
+import io.homeassistant.companion.android.util.PermissionRequestMediator
+import javax.inject.Inject
+import kotlin.math.absoluteValue
+import kotlinx.coroutines.launch
 
+@AndroidEntryPoint
 open class BaseActivity : AppCompatActivity() {
+
+    @Inject
+    lateinit var permissionRequestMediator: PermissionRequestMediator
+
     private var car: Car? = null
     private var carRestrictionManager: CarUxRestrictionsManager? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                permissionRequestMediator.eventFlow.collect { permissionToRequest ->
+                    ActivityCompat.requestPermissions(
+                        this@BaseActivity,
+                        arrayOf(permissionToRequest),
+                        permissionToRequest.hashCode().absoluteValue
+                    )
+                }
+            }
+        }
+    }
 
     override fun onResume() {
         super.onResume()
@@ -28,7 +58,7 @@ open class BaseActivity : AppCompatActivity() {
             car = Car.createCar(this)
             carRestrictionManager =
                 car?.getCarManager(Car.CAR_UX_RESTRICTION_SERVICE) as CarUxRestrictionsManager
-            var listener =
+            val listener =
                 CarUxRestrictionsManager.OnUxRestrictionsChangedListener { restrictions ->
                     if (restrictions.isRequiresDistractionOptimization) {
                         startCarAppActivity()

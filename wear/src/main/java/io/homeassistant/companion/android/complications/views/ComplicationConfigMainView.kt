@@ -2,32 +2,35 @@ package io.homeassistant.companion.android.complications.views
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
-import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.ChipDefaults
-import androidx.wear.compose.material.Icon
-import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.ToggleChip
-import androidx.wear.compose.material.ToggleChipDefaults
+import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.FilledIconButton
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButtonDefaults
+import androidx.wear.compose.material3.SwitchButton
+import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.touchTargetAwareSize
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import androidx.wear.tooling.preview.devices.WearDevices
 import com.mikepenz.iconics.compose.Image
-import com.mikepenz.iconics.typeface.library.community.material.CommunityMaterial
 import io.homeassistant.companion.android.common.R
 import io.homeassistant.companion.android.complications.ComplicationConfigViewModel
 import io.homeassistant.companion.android.data.SimplifiedEntity
 import io.homeassistant.companion.android.theme.WearAppTheme
-import io.homeassistant.companion.android.theme.wearColorPalette
+import io.homeassistant.companion.android.theme.getFilledTonalButtonColors
+import io.homeassistant.companion.android.theme.getSwitchButtonColors
+import io.homeassistant.companion.android.theme.wearColorScheme
 import io.homeassistant.companion.android.util.getIcon
 import io.homeassistant.companion.android.util.simplifiedEntity
 import io.homeassistant.companion.android.views.ChooseEntityView
@@ -52,11 +55,13 @@ fun LoadConfigView(
                 MainConfigView(
                     entity = complicationConfigViewModel.selectedEntity,
                     showTitle = complicationConfigViewModel.entityShowTitle,
+                    showUnit = complicationConfigViewModel.entityShowUnit,
                     loadingState = complicationConfigViewModel.loadingState,
                     onChooseEntityClicked = {
                         swipeDismissableNavController.navigate(SCREEN_CHOOSE_ENTITY)
                     },
                     onShowTitleClicked = complicationConfigViewModel::setShowTitle,
+                    onShowUnitClicked = complicationConfigViewModel::setShowUnit,
                     onAcceptClicked = onAcceptClicked
                 )
             }
@@ -81,9 +86,11 @@ fun LoadConfigView(
 fun MainConfigView(
     entity: SimplifiedEntity?,
     showTitle: Boolean,
+    showUnit: Boolean,
     loadingState: ComplicationConfigViewModel.LoadingState,
     onChooseEntityClicked: () -> Unit,
     onShowTitleClicked: (Boolean) -> Unit,
+    onShowUnitClicked: (Boolean) -> Unit,
     onAcceptClicked: () -> Unit
 ) {
     ThemeLazyColumn {
@@ -98,20 +105,16 @@ fun MainConfigView(
                     entity?.domain ?: "light",
                     LocalContext.current
                 )
-                Chip(
+                Button(
                     modifier = Modifier.fillMaxWidth(),
                     icon = {
                         Image(
-                            asset = iconBitmap ?: CommunityMaterial.Icon.cmd_bookmark,
-                            colorFilter = ColorFilter.tint(wearColorPalette.onSurface)
+                            asset = iconBitmap,
+                            colorFilter = ColorFilter.tint(wearColorScheme.onSurface)
                         )
                     },
-                    colors = ChipDefaults.secondaryChipColors(),
-                    label = {
-                        Text(
-                            text = stringResource(id = R.string.choose_entity)
-                        )
-                    },
+                    colors = getFilledTonalButtonColors(),
+                    label = { Text(stringResource(id = R.string.choose_entity)) },
                     secondaryLabel = {
                         Text(
                             if (loaded) {
@@ -127,34 +130,37 @@ fun MainConfigView(
             }
             item {
                 val isChecked = !loaded || showTitle
-                ToggleChip(
+                SwitchButton(
                     checked = isChecked,
                     onCheckedChange = onShowTitleClicked,
                     label = { Text(stringResource(R.string.show_entity_title)) },
-                    toggleControl = {
-                        Icon(
-                            imageVector = ToggleChipDefaults.switchIcon(isChecked),
-                            contentDescription = if (isChecked) {
-                                stringResource(R.string.enabled)
-                            } else {
-                                stringResource(R.string.disabled)
-                            }
-                        )
-                    },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = loaded && entity != null
+                    enabled = loaded && entity != null,
+                    colors = getSwitchButtonColors()
+                )
+            }
+            item {
+                val isChecked = !loaded || showUnit
+                SwitchButton(
+                    checked = isChecked,
+                    onCheckedChange = onShowUnitClicked,
+                    label = { Text(stringResource(R.string.show_unit_title)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = loaded && entity != null,
+                    colors = getSwitchButtonColors()
                 )
             }
 
             item {
-                Button(
-                    modifier = Modifier.padding(top = 8.dp),
+                FilledIconButton(
+                    modifier = Modifier.padding(top = 8.dp).touchTargetAwareSize(IconButtonDefaults.SmallButtonSize),
                     onClick = { onAcceptClicked() },
-                    colors = ButtonDefaults.primaryButtonColors(),
                     enabled = loaded && entity != null
                 ) {
-                    Image(
-                        CommunityMaterial.Icon.cmd_check
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = stringResource(id = R.string.save),
+                        modifier = Modifier.size(IconButtonDefaults.iconSizeFor(IconButtonDefaults.SmallButtonSize))
                     )
                 }
             }
@@ -166,15 +172,17 @@ fun MainConfigView(
     }
 }
 
-@Preview(device = Devices.WEAR_OS_LARGE_ROUND)
+@Preview(device = WearDevices.LARGE_ROUND)
 @Composable
 fun PreviewMainConfigView() {
     MainConfigView(
         entity = simplifiedEntity,
         showTitle = true,
+        showUnit = false,
         loadingState = ComplicationConfigViewModel.LoadingState.READY,
         onChooseEntityClicked = {},
         onShowTitleClicked = {},
+        onShowUnitClicked = {},
         onAcceptClicked = {}
     )
 }

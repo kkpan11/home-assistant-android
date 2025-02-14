@@ -1,9 +1,18 @@
 package io.homeassistant.companion.android.settings
 
+import android.app.role.RoleManager
+import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.getSystemService
 import androidx.preference.PreferenceDataStore
 import io.homeassistant.companion.android.BuildConfig
+import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.integration.DeviceRegistration
 import io.homeassistant.companion.android.common.data.integration.impl.entities.RateLimitResponse
 import io.homeassistant.companion.android.common.data.prefs.PrefsRepository
@@ -25,15 +34,16 @@ import io.homeassistant.companion.android.settings.language.LanguagesManager
 import io.homeassistant.companion.android.themes.ThemesManager
 import io.homeassistant.companion.android.util.ChangeLog
 import io.homeassistant.companion.android.util.UrlUtil
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
 
 class SettingsPresenterImpl @Inject constructor(
     private val serverManager: ServerManager,
@@ -53,6 +63,13 @@ class SettingsPresenterImpl @Inject constructor(
 
     private lateinit var view: SettingsView
 
+    private val voiceCommandAppComponent = ComponentName(
+        BuildConfig.APPLICATION_ID,
+        "io.homeassistant.companion.android.assist.VoiceCommandIntentActivity"
+    )
+
+    private var suggestionFlow = MutableStateFlow<SettingsHomeSuggestion?>(null)
+
     override fun getBoolean(key: String, defValue: Boolean): Boolean = runBlocking {
         return@runBlocking when (key) {
             "fullscreen" -> prefsRepository.isFullScreenEnabled()
@@ -61,7 +78,10 @@ class SettingsPresenterImpl @Inject constructor(
             "crash_reporting" -> prefsRepository.isCrashReporting()
             "autoplay_video" -> prefsRepository.isAutoPlayVideoEnabled()
             "always_show_first_view_on_app_start" -> prefsRepository.isAlwaysShowFirstViewOnAppStartEnabled()
-            "webview_debug" -> prefsRepository.isWebViewDebugEnabled()
+            "assist_voice_command_intent" -> {
+                val componentSetting = view.getPackageManager()?.getComponentEnabledSetting(voiceCommandAppComponent)
+                componentSetting != null && componentSetting != PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            }
             else -> throw IllegalArgumentException("No boolean found by this key: $key")
         }
     }
@@ -75,7 +95,12 @@ class SettingsPresenterImpl @Inject constructor(
                 "crash_reporting" -> prefsRepository.setCrashReporting(value)
                 "autoplay_video" -> prefsRepository.setAutoPlayVideo(value)
                 "always_show_first_view_on_app_start" -> prefsRepository.setAlwaysShowFirstViewOnAppStart(value)
-                "webview_debug" -> prefsRepository.setWebViewDebugEnabled(value)
+                "assist_voice_command_intent" ->
+                    view.getPackageManager()?.setComponentEnabledSetting(
+                        voiceCommandAppComponent,
+                        if (value) PackageManager.COMPONENT_ENABLED_STATE_DEFAULT else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        PackageManager.DONT_KILL_APP
+                    )
                 else -> throw IllegalArgumentException("No boolean found by this key: $key")
             }
         }
@@ -85,6 +110,7 @@ class SettingsPresenterImpl @Inject constructor(
         when (key) {
             "themes" -> themesManager.getCurrentTheme()
             "languages" -> langsManager.getCurrentLang()
+            "page_zoom" -> prefsRepository.getPageZoomLevel().toString()
             "screen_orientation" -> prefsRepository.getScreenOrientation()
             else -> throw IllegalArgumentException("No string found by this key: $key")
         }
@@ -95,6 +121,7 @@ class SettingsPresenterImpl @Inject constructor(
             when (key) {
                 "themes" -> themesManager.saveTheme(value)
                 "languages" -> langsManager.saveLang(value)
+                "page_zoom" -> prefsRepository.setPageZoomLevel(value?.toIntOrNull())
                 "screen_orientation" -> prefsRepository.saveScreenOrientation(value)
                 else -> throw IllegalArgumentException("No string found by this key: $key")
             }
@@ -112,6 +139,8 @@ class SettingsPresenterImpl @Inject constructor(
     override fun onFinish() {
         mainScope.cancel()
     }
+
+    override fun getSuggestionFlow(): StateFlow<SettingsHomeSuggestion?> = suggestionFlow
 
     override fun getServersFlow(): StateFlow<List<Server>> = serverManager.defaultServersFlow
 
@@ -206,6 +235,68 @@ class SettingsPresenterImpl @Inject constructor(
                     SensorUpdateFrequencySetting.NORMAL
                 )
             )
+        }
+    }
+
+    override fun updateSuggestions(context: Context) {
+        mainScope.launch { getSuggestions(context, false) }
+    }
+
+    override fun cancelSuggestion(context: Context, id: String) {
+        mainScope.launch {
+            val ignored = prefsRepository.getIgnoredSuggestions()
+            if (!ignored.contains(id)) {
+                prefsRepository.setIgnoredSuggestions(ignored + id)
+            }
+            getSuggestions(context, true)
+        }
+    }
+
+    private suspend fun getSuggestions(context: Context, overwrite: Boolean) {
+        val suggestions = mutableListOf<SettingsHomeSuggestion>()
+
+        // Assist
+        var assistantSuggestion = serverManager.defaultServers.any { it.version?.isAtLeast(2023, 5) == true }
+        assistantSuggestion = if (
+            assistantSuggestion &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+        ) {
+            false
+        } else if (assistantSuggestion && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = context.getSystemService<RoleManager>()
+            roleManager?.isRoleAvailable(RoleManager.ROLE_ASSISTANT) == true && !roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)
+        } else if (assistantSuggestion && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val defaultApp: String? = Settings.Secure.getString(context.contentResolver, "assistant")
+            defaultApp?.contains(BuildConfig.APPLICATION_ID) == false
+        } else {
+            false
+        }
+        if (assistantSuggestion) {
+            suggestions += SettingsHomeSuggestion(
+                SettingsPresenter.SUGGESTION_ASSISTANT_APP,
+                commonR.string.suggestion_assist_title,
+                commonR.string.suggestion_assist_summary,
+                R.drawable.ic_comment_processing_outline
+            )
+        }
+
+        // Notifications
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            suggestions += SettingsHomeSuggestion(
+                SettingsPresenter.SUGGESTION_NOTIFICATION_PERMISSION,
+                commonR.string.suggestion_notifications_title,
+                commonR.string.suggestion_notifications_summary,
+                commonR.drawable.ic_notifications
+            )
+        }
+
+        val ignored = prefsRepository.getIgnoredSuggestions()
+        val filteredSuggestions = suggestions.filter { !ignored.contains(it.id) }
+        if (overwrite || suggestionFlow.value == null) {
+            suggestionFlow.emit(filteredSuggestions.randomOrNull())
+        } else if (filteredSuggestions.none { it.id == suggestionFlow.value?.id }) {
+            suggestionFlow.emit(null)
         }
     }
 }

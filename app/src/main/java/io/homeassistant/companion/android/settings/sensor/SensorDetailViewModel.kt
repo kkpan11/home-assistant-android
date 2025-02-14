@@ -2,7 +2,10 @@ package io.homeassistant.companion.android.settings.sensor
 
 import android.Manifest
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.pm.PackageManager.NameNotFoundException
+import android.os.Build
 import android.util.Log
 import androidx.annotation.StringRes
 import androidx.compose.runtime.State
@@ -14,6 +17,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.bluetooth.BluetoothUtils
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.sensors.BluetoothSensorManager
@@ -29,8 +33,10 @@ import io.homeassistant.companion.android.database.settings.SensorUpdateFrequenc
 import io.homeassistant.companion.android.database.settings.SettingsDao
 import io.homeassistant.companion.android.sensors.LastAppSensorManager
 import io.homeassistant.companion.android.sensors.SensorReceiver
+import javax.inject.Inject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,8 +44,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
 
 @HiltViewModel
 class SensorDetailViewModel @Inject constructor(
@@ -72,6 +76,8 @@ class SensorDetailViewModel @Inject constructor(
         )
         data class SettingDialogState(
             val setting: SensorSetting,
+            /** Indicates if this is still loading entries in the background */
+            val loading: Boolean,
             /** List of entity ID to entity pairs */
             val entries: List<Pair<String, String>>,
             /** List of selected entity ID */
@@ -176,38 +182,38 @@ class SensorDetailViewModel @Inject constructor(
     }
 
     fun setEnabled(isEnabled: Boolean, serverId: Int?) {
-        if (isEnabled) {
-            sensorManager?.requiredPermissions(sensorId)?.let { permissions ->
-                val fineLocation = DisabledLocationHandler.containsLocationPermission(permissions, true)
-                val coarseLocation = DisabledLocationHandler.containsLocationPermission(permissions, false)
-
-                if ((fineLocation || coarseLocation) &&
-                    !DisabledLocationHandler.isLocationEnabled(getApplication())
-                ) {
-                    val sensorName = basicSensor?.let {
-                        getApplication<Application>().getString(
-                            basicSensor.name
-                        )
-                    }.orEmpty()
-                    locationPermissionRequests.value = LocationPermissionsDialog(block = true, serverId = serverId, sensors = arrayOf(sensorName))
-                    return
-                } else {
-                    if (!sensorManager.checkPermission(getApplication(), sensorId)) {
-                        if (sensorManager is NetworkSensorManager) {
-                            locationPermissionRequests.value = LocationPermissionsDialog(false, serverId, emptyArray(), permissions)
-                        } else if (sensorManager is LastAppSensorManager && !sensorManager.checkUsageStatsPermission(getApplication())) {
-                            permissionRequests.value = PermissionsDialog(serverId, permissions)
-                        } else {
-                            permissionRequests.value = PermissionsDialog(serverId, permissions)
-                        }
-
-                        return
-                    }
-                }
-            } ?: return
-        }
-
         viewModelScope.launch {
+            if (isEnabled) {
+                sensorManager?.requiredPermissions(sensorId)?.let { permissions ->
+                    val fineLocation = DisabledLocationHandler.containsLocationPermission(permissions, true)
+                    val coarseLocation = DisabledLocationHandler.containsLocationPermission(permissions, false)
+
+                    if ((fineLocation || coarseLocation) &&
+                        !DisabledLocationHandler.isLocationEnabled(getApplication())
+                    ) {
+                        val sensorName = basicSensor?.let {
+                            getApplication<Application>().getString(
+                                basicSensor.name
+                            )
+                        }.orEmpty()
+                        locationPermissionRequests.value = LocationPermissionsDialog(block = true, serverId = serverId, sensors = arrayOf(sensorName))
+                        return@launch
+                    } else {
+                        if (!sensorManager.checkPermission(getApplication(), sensorId)) {
+                            if (sensorManager is NetworkSensorManager) {
+                                locationPermissionRequests.value = LocationPermissionsDialog(false, serverId, emptyArray(), permissions)
+                            } else if (sensorManager is LastAppSensorManager && !sensorManager.checkUsageStatsPermission(getApplication())) {
+                                permissionRequests.value = PermissionsDialog(serverId, permissions)
+                            } else {
+                                permissionRequests.value = PermissionsDialog(serverId, permissions)
+                            }
+
+                            return@launch
+                        }
+                    }
+                } ?: return@launch
+            }
+
             updateSensorEntity(isEnabled, serverId)
             if (isEnabled) {
                 try {
@@ -222,16 +228,30 @@ class SensorDetailViewModel @Inject constructor(
     fun setServersExpanded(expand: Boolean) = viewModelScope.launch { _serversDoExpand.emit(expand) }
 
     /**
-     * Builds a SettingDialogState based on the given Sensor Setting.
+     * Builds a SettingDialogState based on the given Sensor Setting. Depending on the
+     * device and/or connection, this may take some time.
      * Should trigger a dialog open in view.
      */
-    fun onSettingWithDialogPressed(setting: SensorSetting) {
+    fun onSettingWithDialogPressed(setting: SensorSetting) = viewModelScope.launch {
+        val dialogLoadingJob = launch {
+            // In case getting entries takes too long, display a temporary loading dialog
+            delay(1000L)
+            sensorSettingsDialog = SettingDialogState(
+                setting = setting,
+                loading = true,
+                entries = listOf(),
+                entriesSelected = listOf()
+            )
+        }
+
         val listKeys = getSettingKeys(setting)
         val listEntries = getSettingEntries(setting, null)
         val state = SettingDialogState(
             setting = setting,
+            loading = false,
             entries = when {
                 setting.valueType == SensorSettingType.LIST ||
+                    setting.valueType == SensorSettingType.LIST_APPS ||
                     setting.valueType == SensorSettingType.LIST_BLUETOOTH ||
                     setting.valueType == SensorSettingType.LIST_ZONES ->
                     listKeys.zip(listEntries)
@@ -242,6 +262,7 @@ class SensorDetailViewModel @Inject constructor(
             },
             entriesSelected = when {
                 setting.valueType == SensorSettingType.LIST ||
+                    setting.valueType == SensorSettingType.LIST_APPS ||
                     setting.valueType == SensorSettingType.LIST_BLUETOOTH ||
                     setting.valueType == SensorSettingType.LIST_ZONES ->
                     setting.value.split(", ").filter { listKeys.contains(it) }
@@ -251,6 +272,7 @@ class SensorDetailViewModel @Inject constructor(
                     emptyList()
             }
         )
+        dialogLoadingJob.cancel()
         sensorSettingsDialog = state
     }
 
@@ -266,13 +288,15 @@ class SensorDetailViewModel @Inject constructor(
     }
 
     fun setSetting(setting: SensorSetting) {
-        sensorDao.add(setting)
-        try {
-            sensorManager?.requestSensorUpdate(getApplication())
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception while requesting update for sensor $sensorId", e)
+        viewModelScope.launch {
+            sensorDao.add(setting)
+            try {
+                sensorManager?.requestSensorUpdate(getApplication())
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception while requesting update for sensor $sensorId", e)
+            }
+            refreshSensorData()
         }
-        refreshSensorData()
     }
 
     private suspend fun updateSensorEntity(isEnabled: Boolean, serverId: Int?) {
@@ -350,10 +374,52 @@ class SensorDetailViewModel @Inject constructor(
         return stringVars.toTypedArray()
     }
 
+    /** @return list of [ApplicationInfo] for the [entries] or all applications if `null`*/
+    private fun getApplicationInfoForEntries(entries: List<String>?): List<ApplicationInfo?> {
+        val packageManager = getApplication<Application>().packageManager
+        return if (entries?.isNotEmpty() == true) {
+            entries.map {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        packageManager.getApplicationInfo(it, PackageManager.ApplicationInfoFlags.of(0))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageManager.getApplicationInfo(it, 0)
+                    }
+                } catch (e: NameNotFoundException) {
+                    null
+                }
+            }
+        } else {
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager?.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager?.getInstalledApplications(PackageManager.GET_META_DATA)
+            }
+            appInfo.orEmpty()
+        }
+    }
+
     private fun getSettingKeys(setting: SensorSetting): List<String> {
         return when (setting.valueType) {
             SensorSettingType.LIST ->
                 setting.entries
+            SensorSettingType.LIST_APPS -> {
+                val packageManager = getApplication<Application>().packageManager
+                getApplicationInfoForEntries(null)
+                    .filterNotNull()
+                    .sortedBy {
+                        packageManager.getApplicationLabel(it).let { label ->
+                            when {
+                                label.isBlank() -> it.packageName
+                                label != it.packageName -> "$label\n(${it.packageName}"
+                                else -> label.toString()
+                            }
+                        }.lowercase()
+                    }
+                    .map { it.packageName }
+            }
             SensorSettingType.LIST_BLUETOOTH ->
                 BluetoothUtils.getBluetoothDevices(getApplication()).map { it.address }
             SensorSettingType.LIST_ZONES ->
@@ -374,12 +440,24 @@ class SensorDetailViewModel @Inject constructor(
         return when (setting.valueType) {
             SensorSettingType.LIST ->
                 getSettingTranslatedEntries(setting.name, entries ?: setting.entries)
-            SensorSettingType.LIST_APPS ->
-                entries ?: getApplication<Application>().packageManager
-                    ?.getInstalledApplications(PackageManager.GET_META_DATA)
-                    ?.map { packageItem -> packageItem.packageName }
-                    ?.sorted()
-                    .orEmpty()
+            SensorSettingType.LIST_APPS -> {
+                val packageManager = getApplication<Application>().packageManager
+                val apps = getApplicationInfoForEntries(entries)
+                apps
+                    .mapIndexed { index, info ->
+                        if (info == null) return@mapIndexed entries?.get(index) ?: ""
+                        val label = packageManager.getApplicationLabel(info)
+                        when {
+                            label.isBlank() ->
+                                info.packageName
+                            label != info.packageName ->
+                                if (entries?.isNotEmpty() == true) label.toString() else "$label\n(${info.packageName})"
+                            else ->
+                                label.toString()
+                        }
+                    }
+                    .sortedBy { it.lowercase() }
+            }
             SensorSettingType.LIST_BLUETOOTH -> {
                 val devices = BluetoothUtils.getBluetoothDevices(getApplication())
                     .filter { entries == null || entries.contains(it.address) }
@@ -431,7 +509,7 @@ class SensorDetailViewModel @Inject constructor(
         // This is only called when we requested permissions to enable a sensor, so check if we
         // need to do another request, or if we have all permissions and should enable the sensor.
         if (results.keys.contains(Manifest.permission.ACCESS_FINE_LOCATION) &&
-            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
         ) {
             permissionRequests.value = PermissionsDialog(serverId, arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
             return

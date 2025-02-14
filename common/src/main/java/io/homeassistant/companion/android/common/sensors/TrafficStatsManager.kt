@@ -6,9 +6,9 @@ import android.net.NetworkCapabilities
 import android.net.TrafficStats
 import android.util.Log
 import androidx.core.content.getSystemService
+import io.homeassistant.companion.android.common.R as commonR
 import java.math.RoundingMode
 import kotlin.math.absoluteValue
-import io.homeassistant.companion.android.common.R as commonR
 
 class TrafficStatsManager : SensorManager {
     companion object {
@@ -76,6 +76,7 @@ class TrafficStatsManager : SensorManager {
         return emptyArray()
     }
 
+    @Suppress("DEPRECATION") // No synchronous option to get all networks
     override fun hasSensor(context: Context): Boolean {
         val cm = context.getSystemService<ConnectivityManager>()!!
         val networkInfo = cm.allNetworks
@@ -88,7 +89,7 @@ class TrafficStatsManager : SensorManager {
         }
         return true
     }
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         updateMobileRxBytes(context)
@@ -97,7 +98,7 @@ class TrafficStatsManager : SensorManager {
         updateTotalTxBytes(context)
     }
 
-    private fun updateMobileRxBytes(context: Context) {
+    private suspend fun updateMobileRxBytes(context: Context) {
         if (!isEnabled(context, rxBytesMobile)) {
             return
         }
@@ -118,7 +119,7 @@ class TrafficStatsManager : SensorManager {
         )
     }
 
-    private fun updateMobileTxBytes(context: Context) {
+    private suspend fun updateMobileTxBytes(context: Context) {
         if (!isEnabled(context, txBytesMobile)) {
             return
         }
@@ -138,7 +139,7 @@ class TrafficStatsManager : SensorManager {
             mapOf()
         )
     }
-    private fun updateTotalRxBytes(context: Context) {
+    private suspend fun updateTotalRxBytes(context: Context) {
         if (!isEnabled(context, rxBytesTotal)) {
             return
         }
@@ -159,7 +160,7 @@ class TrafficStatsManager : SensorManager {
         )
     }
 
-    private fun updateTotalTxBytes(context: Context) {
+    private suspend fun updateTotalTxBytes(context: Context) {
         if (!isEnabled(context, txBytesTotal)) {
             return
         }

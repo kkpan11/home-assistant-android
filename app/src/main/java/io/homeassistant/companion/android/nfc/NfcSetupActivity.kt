@@ -10,14 +10,15 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.accompanist.themeadapter.material.MdcTheme
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.BaseActivity
-import io.homeassistant.companion.android.nfc.views.LoadNfcView
-import io.homeassistant.companion.android.util.UrlHandler
-import kotlinx.coroutines.launch
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.nfc.views.LoadNfcView
+import io.homeassistant.companion.android.util.UrlUtil
+import io.homeassistant.companion.android.util.compose.HomeAssistantAppTheme
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class NfcSetupActivity : BaseActivity() {
@@ -62,7 +63,7 @@ class NfcSetupActivity : BaseActivity() {
         }
 
         setContent {
-            MdcTheme {
+            HomeAssistantAppTheme {
                 LoadNfcView(
                     viewModel = viewModel,
                     startDestination = if (simpleWrite) NAV_WRITE else NAV_WELCOME,
@@ -82,9 +83,11 @@ class NfcSetupActivity : BaseActivity() {
         mNfcAdapter?.let {
             NFCUtil.enableNFCInForeground(it, this, javaClass)
         }
-        registerReceiver(
+        ContextCompat.registerReceiver(
+            this,
             nfcStateChangedReceiver,
-            IntentFilter(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED)
+            IntentFilter(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED),
+            ContextCompat.RECEIVER_EXPORTED
         )
     }
 
@@ -106,7 +109,7 @@ class NfcSetupActivity : BaseActivity() {
                 // Create new nfc tag
                 if (!viewModel.nfcEventShouldWrite) {
                     val url = NFCUtil.extractUrlFromNFCIntent(intent)
-                    val nfcTagId = UrlHandler.splitNfcTagId(url)
+                    val nfcTagId = UrlUtil.splitNfcTagId(url)
                     if (nfcTagId == null) {
                         viewModel.onNfcReadEmpty()
                     } else {

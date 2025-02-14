@@ -6,7 +6,6 @@ import android.content.ComponentName
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.text.Html.fromHtml
 import android.util.Log
 import android.view.View
 import android.widget.AdapterView
@@ -15,23 +14,24 @@ import android.widget.Spinner
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.graphics.toColorInt
+import androidx.core.text.HtmlCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.fasterxml.jackson.databind.JsonMappingException
-import com.google.android.material.color.DynamicColors
 import dagger.hilt.android.AndroidEntryPoint
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.database.widget.TemplateWidgetDao
 import io.homeassistant.companion.android.database.widget.WidgetBackgroundType
 import io.homeassistant.companion.android.databinding.WidgetTemplateConfigureBinding
 import io.homeassistant.companion.android.settings.widgets.ManageWidgetsViewModel
 import io.homeassistant.companion.android.util.getHexForColor
 import io.homeassistant.companion.android.widgets.BaseWidgetConfigureActivity
+import io.homeassistant.companion.android.widgets.common.WidgetUtils
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
 
 @AndroidEntryPoint
 class TemplateWidgetConfigureActivity : BaseWidgetConfigureActivity() {
@@ -54,8 +54,8 @@ class TemplateWidgetConfigureActivity : BaseWidgetConfigureActivity() {
 
     private var requestLauncherSetup = false
 
-    public override fun onCreate(icicle: Bundle?) {
-        super.onCreate(icicle)
+    public override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
         // Set the result to CANCELED.  This will cause the widget host to cancel
         // out of the widget placement if the user presses the back button.
@@ -86,13 +86,7 @@ class TemplateWidgetConfigureActivity : BaseWidgetConfigureActivity() {
 
         val templateWidget = templateWidgetDao.get(appWidgetId)
 
-        val backgroundTypeValues = mutableListOf(
-            getString(commonR.string.widget_background_type_daynight),
-            getString(commonR.string.widget_background_type_transparent)
-        )
-        if (DynamicColors.isDynamicColorAvailable()) {
-            backgroundTypeValues.add(0, getString(commonR.string.widget_background_type_dynamiccolor))
-        }
+        val backgroundTypeValues = WidgetUtils.getBackgroundOptionList(this)
         binding.backgroundType.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, backgroundTypeValues)
 
         setupServerSelect(templateWidget?.serverId)
@@ -107,16 +101,12 @@ class TemplateWidgetConfigureActivity : BaseWidgetConfigureActivity() {
                 binding.renderedTemplate.text = getString(commonR.string.empty_template)
                 binding.addButton.isEnabled = false
             }
-
             binding.backgroundType.setSelection(
-                when {
-                    templateWidget.backgroundType == WidgetBackgroundType.DYNAMICCOLOR && DynamicColors.isDynamicColorAvailable() ->
-                        backgroundTypeValues.indexOf(getString(commonR.string.widget_background_type_dynamiccolor))
-                    templateWidget.backgroundType == WidgetBackgroundType.TRANSPARENT ->
-                        backgroundTypeValues.indexOf(getString(commonR.string.widget_background_type_transparent))
-                    else ->
-                        backgroundTypeValues.indexOf(getString(commonR.string.widget_background_type_daynight))
-                }
+                WidgetUtils.getSelectedBackgroundOption(
+                    this,
+                    templateWidget.backgroundType,
+                    backgroundTypeValues
+                )
             )
             binding.textColor.isVisible = templateWidget.backgroundType == WidgetBackgroundType.TRANSPARENT
             binding.textColorWhite.isChecked =
@@ -127,9 +117,7 @@ class TemplateWidgetConfigureActivity : BaseWidgetConfigureActivity() {
             binding.backgroundType.setSelection(0)
         }
 
-        binding.templateText.doAfterTextChanged { editableText ->
-            renderTemplateText()
-        }
+        binding.templateText.doAfterTextChanged { renderTemplateText() }
 
         binding.backgroundType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -215,9 +203,9 @@ class TemplateWidgetConfigureActivity : BaseWidgetConfigureActivity() {
         finish()
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent != null && intent.extras != null && intent.hasExtra(PIN_WIDGET_CALLBACK)) {
+        if (intent.extras != null && intent.hasExtra(PIN_WIDGET_CALLBACK)) {
             appWidgetId = intent.extras!!.getInt(
                 AppWidgetManager.EXTRA_APPWIDGET_ID,
                 AppWidgetManager.INVALID_APPWIDGET_ID
@@ -247,7 +235,7 @@ class TemplateWidgetConfigureActivity : BaseWidgetConfigureActivity() {
                     enabled = false
                 }
             }
-            binding.renderedTemplate.text = fromHtml(templateText)
+            binding.renderedTemplate.text = templateText?.let { HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY) }
             binding.addButton.isEnabled = enabled && isValidServerId()
         }
     }

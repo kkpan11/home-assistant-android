@@ -6,13 +6,16 @@ import android.net.wifi.WifiManager
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import okio.internal.commonToUtf8String
+import io.homeassistant.companion.android.common.data.HomeAssistantVersion
+import java.net.MalformedURLException
 import java.net.URL
 import java.util.concurrent.locks.ReentrantLock
+import okio.internal.commonToUtf8String
 
 class HomeAssistantSearcher constructor(
     private val nsdManager: NsdManager,
     private val wifiManager: WifiManager?,
+    private val onStart: () -> Unit,
     private val onInstanceFound: (instance: HomeAssistantInstance) -> Unit,
     private val onError: () -> Unit
 ) : NsdManager.DiscoveryListener, DefaultLifecycleObserver {
@@ -29,7 +32,7 @@ class HomeAssistantSearcher constructor(
 
     private var multicastLock: WifiManager.MulticastLock? = null
 
-    fun beginSearch() {
+    private fun beginSearch() {
         if (isSearching) {
             return
         }
@@ -42,6 +45,7 @@ class HomeAssistantSearcher constructor(
             onError()
             return
         }
+        onStart()
         try {
             if (wifiManager != null && multicastLock == null) {
                 multicastLock = wifiManager.createMulticastLock(TAG)
@@ -93,15 +97,19 @@ class HomeAssistantSearcher constructor(
                     Log.i(TAG, "Service resolved: $resolvedService")
                     resolvedService?.let {
                         val baseUrl = it.attributes["base_url"]
-                        val version = it.attributes["version"]
-                        if (baseUrl != null && version != null) {
-                            onInstanceFound(
-                                HomeAssistantInstance(
+                        val versionAttr = it.attributes["version"]
+                        val version = if (versionAttr?.isNotEmpty() == true) HomeAssistantVersion.fromString(versionAttr.commonToUtf8String()) else null
+                        if (baseUrl?.isNotEmpty() == true && version != null) {
+                            try {
+                                val instance = HomeAssistantInstance(
                                     it.serviceName,
                                     URL(baseUrl.commonToUtf8String()),
-                                    version.commonToUtf8String()
+                                    version
                                 )
-                            )
+                                onInstanceFound(instance)
+                            } catch (e: MalformedURLException) {
+                                Log.w(TAG, "Failed to create instance: ${baseUrl.commonToUtf8String()}")
+                            }
                         }
                     }
                     lock.unlock()

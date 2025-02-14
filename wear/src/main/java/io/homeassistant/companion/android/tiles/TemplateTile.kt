@@ -1,10 +1,6 @@
 package io.homeassistant.companion.android.tiles
 
 import android.graphics.Typeface
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
@@ -12,40 +8,46 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
 import android.util.Log
-import androidx.core.content.getSystemService
 import androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY
 import androidx.core.text.HtmlCompat.fromHtml
-import androidx.wear.tiles.ActionBuilders
-import androidx.wear.tiles.ColorBuilders
-import androidx.wear.tiles.DimensionBuilders
-import androidx.wear.tiles.DimensionBuilders.dp
-import androidx.wear.tiles.LayoutElementBuilders
-import androidx.wear.tiles.LayoutElementBuilders.Box
-import androidx.wear.tiles.LayoutElementBuilders.FONT_WEIGHT_BOLD
-import androidx.wear.tiles.LayoutElementBuilders.LayoutElement
-import androidx.wear.tiles.ModifiersBuilders
+import androidx.wear.protolayout.ColorBuilders
+import androidx.wear.protolayout.DimensionBuilders
+import androidx.wear.protolayout.LayoutElementBuilders
+import androidx.wear.protolayout.LayoutElementBuilders.Box
+import androidx.wear.protolayout.LayoutElementBuilders.FONT_WEIGHT_BOLD
+import androidx.wear.protolayout.LayoutElementBuilders.LayoutElement
+import androidx.wear.protolayout.ResourceBuilders
+import androidx.wear.protolayout.ResourceBuilders.Resources
+import androidx.wear.protolayout.TimelineBuilders.Timeline
+import androidx.wear.tiles.EventBuilders
 import androidx.wear.tiles.RequestBuilders.ResourcesRequest
 import androidx.wear.tiles.RequestBuilders.TileRequest
-import androidx.wear.tiles.ResourceBuilders
-import androidx.wear.tiles.ResourceBuilders.Resources
 import androidx.wear.tiles.TileBuilders.Tile
 import androidx.wear.tiles.TileService
-import androidx.wear.tiles.TimelineBuilders.Timeline
 import com.fasterxml.jackson.databind.JsonMappingException
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.prefs.WearPrefsRepository
+import io.homeassistant.companion.android.common.data.prefs.impl.entities.TemplateTileConfig
 import io.homeassistant.companion.android.common.data.servers.ServerManager
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.guava.future
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class TemplateTile : TileService() {
+
+    companion object {
+        private const val TAG = "TemplateTile"
+    }
+
     private val serviceJob = Job()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
@@ -57,28 +59,23 @@ class TemplateTile : TileService() {
 
     override fun onTileRequest(requestParams: TileRequest): ListenableFuture<Tile> =
         serviceScope.future {
-            val state = requestParams.state
-            if (state != null && state.lastClickableId == "refresh") {
-                if (wearPrefsRepository.getWearHapticFeedback()) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        val vibratorManager = applicationContext.getSystemService<VibratorManager>()
-                        val vibrator = vibratorManager?.defaultVibrator
-                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
-                    } else {
-                        val vibrator = applicationContext.getSystemService<Vibrator>()
-                        vibrator?.vibrate(200)
-                    }
-                }
+            if (requestParams.currentState.lastClickableId == MODIFIER_CLICK_REFRESH) {
+                if (wearPrefsRepository.getWearHapticFeedback()) hapticClick(applicationContext)
+            }
+
+            val tileId = requestParams.tileId
+            val templateTileConfig = getTemplateTileConfig(tileId)
+            val freshness = when {
+                templateTileConfig.refreshInterval <= 1 -> 0
+                else -> templateTileConfig.refreshInterval
             }
 
             Tile.Builder()
                 .setResourcesVersion("1")
-                .setFreshnessIntervalMillis(
-                    wearPrefsRepository.getTemplateTileRefreshInterval().toLong() * 1000
-                )
-                .setTimeline(
+                .setFreshnessIntervalMillis(freshness.toLong() * 1_000)
+                .setTileTimeline(
                     if (serverManager.isRegistered()) {
-                        timeline()
+                        timeline(templateTileConfig)
                     } else {
                         loggedOutTimeline(
                             this@TemplateTile,
@@ -90,12 +87,12 @@ class TemplateTile : TileService() {
                 ).build()
         }
 
-    override fun onResourcesRequest(requestParams: ResourcesRequest): ListenableFuture<Resources> =
+    override fun onTileResourcesRequest(requestParams: ResourcesRequest): ListenableFuture<Resources> =
         serviceScope.future {
             Resources.Builder()
                 .setVersion("1")
                 .addIdToImageMapping(
-                    "refresh",
+                    RESOURCE_REFRESH,
                     ResourceBuilders.ImageResource.Builder()
                         .setAndroidResourceByResId(
                             ResourceBuilders.AndroidImageResourceByResId.Builder()
@@ -106,17 +103,57 @@ class TemplateTile : TileService() {
                 .build()
         }
 
+    override fun onTileAddEvent(requestParams: EventBuilders.TileAddEvent): Unit = runBlocking {
+        withContext(Dispatchers.IO) {
+            /**
+             * When the app is updated from an older version (which only supported a single Template Tile),
+             * and the user is adding a new Template Tile, we can't tell for sure if it's the 1st or 2nd Tile.
+             * Even though we may have the Template tile config stored in the prefs, it doesn't guarantee that
+             *   the tile was actually added to the Tiles carousel.
+             * The [WearPrefsRepositoryImpl::getTemplateTileAndSaveTileId] method will handle both of the following cases:
+             * 1. There was no Tile added, but there was a Template tile config stored in the prefs.
+             *    In this case, the stored config will be associated to the new tileId.
+             * 2. There was a single Tile added, and there was a Template tile config stored in the prefs.
+             *    If there was a Tile update since updating the app, the tileId will be already
+             *    associated to the config, because it also calls [getTemplateTileAndSaveTileId].
+             *    If there was no Tile update yet, the new Tile will "steal" the config from the existing Tile,
+             *    and the old Tile will behave as it is the new Tile. This is needed because
+             *    we don't know if it's the 1st or 2nd Tile.
+             */
+            wearPrefsRepository.getTemplateTileAndSaveTileId(requestParams.tileId)
+        }
+    }
+
+    override fun onTileRemoveEvent(requestParams: EventBuilders.TileRemoveEvent): Unit = runBlocking {
+        withContext(Dispatchers.IO) {
+            wearPrefsRepository.removeTemplateTile(requestParams.tileId)
+        }
+    }
+
+    override fun onTileEnterEvent(requestParams: EventBuilders.TileEnterEvent) {
+        serviceScope.launch {
+            val tileId = requestParams.tileId
+            val templateTileConfig = getTemplateTileConfig(tileId)
+            if (templateTileConfig.refreshInterval >= 1) {
+                try {
+                    getUpdater(this@TemplateTile).requestUpdate(TemplateTile::class.java)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Unable to request tile update on enter", e)
+                }
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // Cleans up the coroutine
         serviceJob.cancel()
     }
 
-    private suspend fun timeline(): Timeline {
-        val template = wearPrefsRepository.getTemplateTileContent()
+    private suspend fun timeline(templateTileConfig: TemplateTileConfig): Timeline {
         val renderedText = try {
             if (serverManager.isRegistered()) {
-                serverManager.integrationRepository().renderTemplate(template, mapOf()).toString()
+                serverManager.integrationRepository().renderTemplate(templateTileConfig.template, mapOf()).toString()
             } else {
                 ""
             }
@@ -133,6 +170,10 @@ class TemplateTile : TileService() {
         return Timeline.fromLayoutElement(layout(renderedText))
     }
 
+    private suspend fun getTemplateTileConfig(tileId: Int): TemplateTileConfig {
+        return wearPrefsRepository.getTemplateTileAndSaveTileId(tileId)
+    }
+
     fun layout(renderedText: String): LayoutElement = Box.Builder().apply {
         if (renderedText.isEmpty()) {
             addContent(
@@ -146,44 +187,10 @@ class TemplateTile : TileService() {
                 parseHtml(renderedText)
             )
         }
-        addContent(
-            LayoutElementBuilders.Arc.Builder()
-                .setAnchorAngle(
-                    DimensionBuilders.DegreesProp.Builder()
-                        .setValue(180f)
-                        .build()
-                )
-                .addContent(
-                    LayoutElementBuilders.ArcAdapter.Builder()
-                        .setContent(
-                            LayoutElementBuilders.Image.Builder()
-                                .setResourceId("refresh")
-                                .setWidth(dp(24f))
-                                .setHeight(dp(24f))
-                                .setModifiers(getRefreshModifiers())
-                                .build()
-                        )
-                        .setRotateContents(false)
-                        .build()
-                )
-                .build()
-        )
+        addContent(getRefreshButton())
         setModifiers(getRefreshModifiers())
     }
         .build()
-
-    private fun getRefreshModifiers(): ModifiersBuilders.Modifiers {
-        return ModifiersBuilders.Modifiers.Builder()
-            .setClickable(
-                ModifiersBuilders.Clickable.Builder()
-                    .setOnClick(
-                        ActionBuilders.LoadAction.Builder().build()
-                    )
-                    .setId("refresh")
-                    .build()
-            )
-            .build()
-    }
 
     private fun parseHtml(renderedText: String): LayoutElementBuilders.Spannable {
         // Replace control char \r\n, \r, \n and also \r\n, \r, \n as text literals in strings to <br>
@@ -203,9 +210,7 @@ class TemplateTile : TileService() {
                                     .build()
                             )
                             is ForegroundColorSpan -> setColor(
-                                ColorBuilders.ColorProp.Builder()
-                                    .setArgb(span.foregroundColor)
-                                    .build()
+                                ColorBuilders.ColorProp.Builder(span.foregroundColor).build()
                             )
                             is RelativeSizeSpan -> {
                                 val defaultSize = 16 // https://developer.android.com/training/wearables/design/typography

@@ -12,12 +12,12 @@ import android.service.controls.templates.RangeTemplate
 import android.service.controls.templates.ToggleRangeTemplate
 import android.service.controls.templates.ToggleTemplate
 import androidx.annotation.RequiresApi
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.integration.Entity
 import io.homeassistant.companion.android.common.data.integration.IntegrationRepository
 import io.homeassistant.companion.android.common.data.integration.getLightBrightness
+import io.homeassistant.companion.android.common.data.integration.isActive
 import io.homeassistant.companion.android.common.data.integration.supportsLightBrightness
-import io.homeassistant.companion.android.common.data.websocket.impl.entities.AreaRegistryResponse
-import io.homeassistant.companion.android.common.R as commonR
 
 @RequiresApi(Build.VERSION_CODES.R)
 object LightControl : HaControl {
@@ -25,15 +25,14 @@ object LightControl : HaControl {
         context: Context,
         control: Control.StatefulBuilder,
         entity: Entity<Map<String, Any>>,
-        area: AreaRegistryResponse?,
-        baseUrl: String?
+        info: HaControlInfo
     ): Control.StatefulBuilder {
         val position = entity.getLightBrightness()
         control.setControlTemplate(
             if (entity.supportsLightBrightness()) {
                 ToggleRangeTemplate(
                     entity.entityId,
-                    entity.state == "on",
+                    entity.isActive(),
                     "",
                     RangeTemplate(
                         entity.entityId,
@@ -48,7 +47,7 @@ object LightControl : HaControl {
                 ToggleTemplate(
                     entity.entityId,
                     ControlButton(
-                        entity.state == "on",
+                        entity.isActive(),
                         "Description"
                     )
                 )
@@ -69,7 +68,7 @@ object LightControl : HaControl {
     ): Boolean {
         return when (action) {
             is BooleanAction -> {
-                integrationRepository.callService(
+                integrationRepository.callAction(
                     action.templateId.split(".")[0],
                     if (action.newState) "turn_on" else "turn_off",
                     hashMapOf(
@@ -80,7 +79,7 @@ object LightControl : HaControl {
             }
             is FloatAction -> {
                 val convertBrightness = action.newValue.div(100).times(255)
-                integrationRepository.callService(
+                integrationRepository.callAction(
                     action.templateId.split(".")[0],
                     "turn_on",
                     hashMapOf(

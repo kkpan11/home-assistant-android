@@ -3,6 +3,7 @@ package io.homeassistant.companion.android.common.sensors
 import android.content.Context
 import android.os.Build
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.util.STATE_UNKNOWN
 
 class AndroidOsSensorManager : SensorManager {
 
@@ -44,14 +45,14 @@ class AndroidOsSensorManager : SensorManager {
         return arrayOf()
     }
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         checkState(context, osVersion)
         checkState(context, osSecurityPatch)
     }
 
-    private fun checkState(
+    private suspend fun checkState(
         context: Context,
         sensor: SensorManager.BasicSensor
     ) {
@@ -67,10 +68,10 @@ class AndroidOsSensorManager : SensorManager {
                 osSecurityPatch.id -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     Build.VERSION.SECURITY_PATCH
                 } else {
-                    "unknown"
+                    STATE_UNKNOWN
                 }
                 else -> {
-                    "unknown"
+                    STATE_UNKNOWN
                 }
             },
             sensor.statelessIcon,

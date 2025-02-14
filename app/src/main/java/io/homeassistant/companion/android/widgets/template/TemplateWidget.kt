@@ -9,29 +9,30 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.os.Bundle
-import android.text.Html.fromHtml
 import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
+import androidx.core.os.BundleCompat
+import androidx.core.text.HtmlCompat
 import com.google.android.material.color.DynamicColors
 import dagger.hilt.android.AndroidEntryPoint
 import io.homeassistant.companion.android.R
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.database.widget.TemplateWidgetDao
 import io.homeassistant.companion.android.database.widget.TemplateWidgetEntity
 import io.homeassistant.companion.android.database.widget.WidgetBackgroundType
 import io.homeassistant.companion.android.util.getAttribute
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
 
 @AndroidEntryPoint
 class TemplateWidget : AppWidgetProvider() {
@@ -130,9 +131,11 @@ class TemplateWidget : AppWidgetProvider() {
             val widgetsWithDifferentTemplate = allWidgets.filter { it.template != widgetTemplates[it.id] }
             if (widgetsWithDifferentTemplate.isNotEmpty()) {
                 if (thisSetScope) {
-                    context.applicationContext.registerReceiver(
+                    ContextCompat.registerReceiver(
+                        context.applicationContext,
                         this@TemplateWidget,
-                        IntentFilter(Intent.ACTION_SCREEN_OFF)
+                        IntentFilter(Intent.ACTION_SCREEN_OFF),
+                        ContextCompat.RECEIVER_NOT_EXPORTED
                     )
                 }
 
@@ -173,9 +176,8 @@ class TemplateWidget : AppWidgetProvider() {
     private suspend fun updateAllWidgets(
         context: Context
     ) {
-        val systemWidgetIds = AppWidgetManager.getInstance(context)
-            .getAppWidgetIds(ComponentName(context, TemplateWidget::class.java))
-            .toSet()
+        val appWidgetManager = AppWidgetManager.getInstance(context) ?: return
+        val systemWidgetIds = appWidgetManager.getAppWidgetIds(ComponentName(context, TemplateWidget::class.java)).toSet()
         val dbWidgetIds = templateWidgetDao.getAll().map { it.id }
 
         val invalidWidgetIds = dbWidgetIds.minus(systemWidgetIds)
@@ -249,7 +251,7 @@ class TemplateWidget : AppWidgetProvider() {
                 }
                 setTextViewText(
                     R.id.widgetTemplateText,
-                    fromHtml(renderedTemplate)
+                    renderedTemplate?.let { HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY) }
                 )
                 setTextViewTextSize(
                     R.id.widgetTemplateText,
@@ -268,7 +270,8 @@ class TemplateWidget : AppWidgetProvider() {
         val serverId = if (extras.containsKey(EXTRA_SERVER_ID)) extras.getInt(EXTRA_SERVER_ID) else null
         val template: String? = extras.getString(EXTRA_TEMPLATE)
         val textSize: Float = extras.getFloat(EXTRA_TEXT_SIZE)
-        val backgroundTypeSelection: WidgetBackgroundType = extras.getSerializable(EXTRA_BACKGROUND_TYPE) as WidgetBackgroundType
+        val backgroundTypeSelection = BundleCompat.getSerializable(extras, EXTRA_BACKGROUND_TYPE, WidgetBackgroundType::class.java)
+            ?: WidgetBackgroundType.DAYNIGHT
         val textColorSelection: String? = extras.getString(EXTRA_TEXT_COLOR)
 
         if (serverId == null || template == null) {

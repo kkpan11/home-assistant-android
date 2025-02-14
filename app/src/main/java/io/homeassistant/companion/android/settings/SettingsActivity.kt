@@ -4,10 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
-import androidx.appcompat.widget.SearchView
 import androidx.biometric.BiometricManager
 import androidx.fragment.app.commit
 import dagger.hilt.EntryPoint
@@ -16,19 +14,18 @@ import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.components.ActivityComponent
 import eightbitlab.com.blurview.BlurView
-import eightbitlab.com.blurview.RenderScriptBlur
 import io.homeassistant.companion.android.BaseActivity
 import io.homeassistant.companion.android.R
 import io.homeassistant.companion.android.authenticator.Authenticator
+import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.settings.notification.NotificationHistoryFragment
 import io.homeassistant.companion.android.settings.qs.ManageTilesFragment
 import io.homeassistant.companion.android.settings.sensor.SensorDetailFragment
 import io.homeassistant.companion.android.settings.server.ServerSettingsFragment
 import io.homeassistant.companion.android.settings.websocket.WebsocketSettingFragment
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
-import io.homeassistant.companion.android.common.R as commonR
+import kotlinx.coroutines.runBlocking
 
 @AndroidEntryPoint
 class SettingsActivity : BaseActivity() {
@@ -50,17 +47,6 @@ class SettingsActivity : BaseActivity() {
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.menu_activity_settings, menu)
-
-        (menu.findItem(R.id.action_search)?.actionView as SearchView).apply {
-            queryHint = getString(commonR.string.search_sensors)
-            maxWidth = Integer.MAX_VALUE
-        }
-
-        return true
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         val entryPoint = EntryPointAccessors.fromActivity(this, SettingsFragmentFactoryEntryPoint::class.java)
         supportFragmentManager.fragmentFactory = entryPoint.getSettingsFragmentFactory()
@@ -73,10 +59,7 @@ class SettingsActivity : BaseActivity() {
 
         blurView = findViewById(R.id.blurView)
         blurView.setupWith(window.decorView.rootView as ViewGroup)
-            .setBlurAlgorithm(RenderScriptBlur(this))
-            .setBlurAutoUpdate(true)
             .setBlurRadius(8f)
-            .setHasFixedTransformationMatrix(false)
             .setBlurEnabled(false)
 
         authenticator = Authenticator(this, this, ::settingsActivityAuthenticationResult)
@@ -93,6 +76,7 @@ class SettingsActivity : BaseActivity() {
                             } else {
                                 SettingsFragment::class.java
                             }
+
                         settingsNavigation == "notification_history" -> NotificationHistoryFragment::class.java
                         settingsNavigation?.startsWith("sensors/") == true -> SensorDetailFragment::class.java
                         settingsNavigation?.startsWith("tiles/") == true -> ManageTilesFragment::class.java
@@ -153,7 +137,7 @@ class SettingsActivity : BaseActivity() {
         Log.d(TAG, "settingsActivityAuthenticationResult(): authenticating: $authenticating, externalAuth: $isExtAuth")
 
         externalAuthCallback?.let {
-            if (it(result) == true) {
+            if (it(result)) {
                 externalAuthCallback = null
             }
         }
@@ -240,6 +224,7 @@ class SettingsActivity : BaseActivity() {
         }
     }
 
+    /** Used to inject classes before [onCreate] */
     @EntryPoint
     @InstallIn(ActivityComponent::class)
     interface SettingsFragmentFactoryEntryPoint {

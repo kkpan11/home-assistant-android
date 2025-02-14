@@ -10,8 +10,8 @@ import android.hardware.SensorManager.SENSOR_DELAY_NORMAL
 import android.os.Build
 import android.util.Log
 import androidx.core.content.getSystemService
-import kotlin.math.roundToInt
 import io.homeassistant.companion.android.common.R as commonR
+import kotlin.math.roundToInt
 
 class StepsSensorManager : SensorManager, SensorEventListener {
     companion object {
@@ -57,14 +57,14 @@ class StepsSensorManager : SensorManager, SensorEventListener {
         return packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_COUNTER)
     }
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         latestContext = context
         updateStepsSensor()
     }
 
-    private fun updateStepsSensor() {
+    private suspend fun updateStepsSensor() {
         if (!isEnabled(latestContext, stepsSensor)) {
             return
         }

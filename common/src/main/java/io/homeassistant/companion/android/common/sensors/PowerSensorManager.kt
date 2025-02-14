@@ -10,7 +10,7 @@ import io.homeassistant.companion.android.common.R as commonR
 class PowerSensorManager : SensorManager {
     companion object {
         private const val TAG = "PowerSensors"
-        private const val packageName = "io.homeassistant.companion.android"
+        private const val PACKAGE_NAME = "io.homeassistant.companion.android"
 
         val interactiveDevice = SensorManager.BasicSensor(
             "is_interactive",
@@ -59,7 +59,7 @@ class PowerSensorManager : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         val powerManager = context.getSystemService<PowerManager>()!!
@@ -70,7 +70,7 @@ class PowerSensorManager : SensorManager {
         }
     }
 
-    private fun updateInteractive(context: Context, powerManager: PowerManager) {
+    private suspend fun updateInteractive(context: Context, powerManager: PowerManager) {
         if (!isEnabled(context, interactiveDevice)) {
             return
         }
@@ -88,7 +88,7 @@ class PowerSensorManager : SensorManager {
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
-    private fun updateDoze(context: Context, powerManager: PowerManager) {
+    private suspend fun updateDoze(context: Context, powerManager: PowerManager) {
         if (!isEnabled(context, doze)) {
             return
         }
@@ -103,13 +103,13 @@ class PowerSensorManager : SensorManager {
             icon,
             mapOf(
                 "ignoring_battery_optimizations" to powerManager.isIgnoringBatteryOptimizations(
-                    packageName
+                    PACKAGE_NAME
                 )
             )
         )
     }
 
-    private fun updatePowerSave(context: Context, powerManager: PowerManager) {
+    private suspend fun updatePowerSave(context: Context, powerManager: PowerManager) {
         if (!isEnabled(context, powerSave)) {
             return
         }

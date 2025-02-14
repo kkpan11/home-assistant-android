@@ -9,31 +9,34 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.notifications.DeviceCommandData
 import io.homeassistant.companion.android.common.notifications.NotificationData
+import io.homeassistant.companion.android.common.notifications.clearNotification
 import io.homeassistant.companion.android.common.notifications.commandBeaconMonitor
 import io.homeassistant.companion.android.common.notifications.commandBleTransmitter
 import io.homeassistant.companion.android.common.notifications.getGroupNotificationBuilder
 import io.homeassistant.companion.android.common.notifications.handleChannel
+import io.homeassistant.companion.android.common.notifications.handleDeleteIntent
 import io.homeassistant.companion.android.common.notifications.handleSmallIcon
 import io.homeassistant.companion.android.common.notifications.handleText
-import io.homeassistant.companion.android.common.util.TextToSpeechData
 import io.homeassistant.companion.android.common.util.cancelGroupIfNeeded
 import io.homeassistant.companion.android.common.util.getActiveNotification
-import io.homeassistant.companion.android.common.util.speakText
-import io.homeassistant.companion.android.common.util.stopTTS
+import io.homeassistant.companion.android.common.util.tts.TextToSpeechClient
+import io.homeassistant.companion.android.common.util.tts.TextToSpeechData
 import io.homeassistant.companion.android.database.AppDatabase
 import io.homeassistant.companion.android.database.notification.NotificationItem
 import io.homeassistant.companion.android.database.sensor.SensorDao
+import io.homeassistant.companion.android.sensors.SensorReceiver
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import javax.inject.Inject
 
 class MessagingManager @Inject constructor(
     @ApplicationContext val context: Context,
     private val serverManager: ServerManager,
-    private val sensorDao: SensorDao
+    private val sensorDao: SensorDao,
+    private val textToSpeechClient: TextToSpeechClient
 ) {
 
     companion object {
@@ -54,11 +57,18 @@ class MessagingManager @Inject constructor(
         val notificationRow =
             NotificationItem(0, now, notificationData[NotificationData.MESSAGE].toString(), jsonObject.toString(), source, serverId)
         notificationDao.add(notificationRow)
+        if (serverManager.getServer(serverId) == null) {
+            Log.w(TAG, "Received notification but no server for it, discarding")
+            return
+        }
 
         mainScope.launch {
             val allowCommands = serverManager.integrationRepository(serverId).isTrusted()
             val message = notificationData[NotificationData.MESSAGE]
             when {
+                message == NotificationData.CLEAR_NOTIFICATION && !notificationData["tag"].isNullOrBlank() -> {
+                    clearNotification(context, notificationData["tag"]!!)
+                }
                 message == DeviceCommandData.COMMAND_BEACON_MONITOR && allowCommands -> {
                     if (!commandBeaconMonitor(context, notificationData)) {
                         sendNotification(notificationData, now)
@@ -69,8 +79,9 @@ class MessagingManager @Inject constructor(
                         sendNotification(notificationData)
                     }
                 }
-                message == TextToSpeechData.TTS -> speakText(context, notificationData)
-                message == TextToSpeechData.COMMAND_STOP_TTS -> stopTTS()
+                message == TextToSpeechData.TTS -> textToSpeechClient.speakText(notificationData)
+                message == TextToSpeechData.COMMAND_STOP_TTS -> textToSpeechClient.stopTTS()
+                message == DeviceCommandData.COMMAND_UPDATE_SENSORS -> SensorReceiver.updateAllSensors(context)
                 else -> sendNotification(notificationData, now)
             }
         }
@@ -105,6 +116,8 @@ class MessagingManager @Inject constructor(
         handleSmallIcon(context, notificationBuilder, data)
 
         handleText(notificationBuilder, data)
+
+        handleDeleteIntent(context, notificationBuilder, data, messageId, group, groupId, null)
 
         notificationManagerCompat.apply {
             Log.d(TAG, "Show notification with tag \"$tag\" and id \"$messageId\"")

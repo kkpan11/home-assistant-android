@@ -1,6 +1,7 @@
 package io.homeassistant.companion.android.settings.ssid
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -11,8 +12,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.data.wifi.WifiHelper
-import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class SsidViewModel @Inject constructor(
@@ -22,7 +23,17 @@ class SsidViewModel @Inject constructor(
     application: Application
 ) : AndroidViewModel(application) {
 
+    companion object {
+        private const val TAG = "SsidViewModel"
+    }
+
     var wifiSsids = mutableStateListOf<String>()
+        private set
+
+    var ethernet by mutableStateOf<Boolean?>(null)
+        private set
+
+    var vpn by mutableStateOf<Boolean?>(null)
         private set
 
     var prioritizeInternal by mutableStateOf(false)
@@ -45,11 +56,11 @@ class SsidViewModel @Inject constructor(
             val server = serverManager.getServer(serverId)
             wifiSsids.clear()
             wifiSsids.addAll(server?.connection?.internalSsids.orEmpty())
+            ethernet = server?.connection?.internalEthernet
+            vpn = server?.connection?.internalVpn
             server?.connection?.prioritizeInternal?.let { prioritizeInternal = it }
 
-            usingWifi = wifiHelper.isUsingWifi()
-            activeSsid = wifiHelper.getWifiSsid()?.removeSurrounding("\"")
-            activeBssid = wifiHelper.getWifiBssid()
+            updateWifiState()
         }
     }
 
@@ -59,8 +70,9 @@ class SsidViewModel @Inject constructor(
      * @return `true` if the SSID was successfully added
      */
     fun addHomeWifiSsid(ssid: String): Boolean {
-        if (ssid.isBlank() || wifiSsids.any { it == ssid.trim() }) return false
-        setHomeWifiSsids((wifiSsids + ssid.trim()).sorted())
+        if (ssid.isEmpty()) return false
+        if (wifiSsids.contains(ssid)) return false
+        setHomeWifiSsids((wifiSsids + ssid).sorted())
         return true
     }
 
@@ -79,6 +91,46 @@ class SsidViewModel @Inject constructor(
             }
             wifiSsids.clear()
             wifiSsids.addAll(ssids)
+        }
+    }
+
+    fun updateWifiState() {
+        try {
+            usingWifi = wifiHelper.isUsingWifi()
+            activeSsid = wifiHelper.getWifiSsid()?.removeSurrounding("\"")
+            activeBssid = wifiHelper.getWifiBssid()
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to update Wi-Fi state", e)
+        }
+    }
+
+    fun setInternalWithEthernet(eth: Boolean) {
+        viewModelScope.launch {
+            serverManager.getServer(serverId)?.let {
+                serverManager.updateServer(
+                    it.copy(
+                        connection = it.connection.copy(
+                            internalEthernet = eth
+                        )
+                    )
+                )
+                ethernet = eth
+            }
+        }
+    }
+
+    fun setInternalWithVpn(privateNetwork: Boolean) {
+        viewModelScope.launch {
+            serverManager.getServer(serverId)?.let {
+                serverManager.updateServer(
+                    it.copy(
+                        connection = it.connection.copy(
+                            internalVpn = privateNetwork
+                        )
+                    )
+                )
+                vpn = privateNetwork
+            }
         }
     }
 

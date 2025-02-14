@@ -8,8 +8,8 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager.SENSOR_DELAY_NORMAL
 import android.util.Log
 import androidx.core.content.getSystemService
-import kotlin.math.roundToInt
 import io.homeassistant.companion.android.common.R as commonR
+import kotlin.math.roundToInt
 
 class ProximitySensorManager : SensorManager, SensorEventListener {
     companion object {
@@ -51,12 +51,12 @@ class ProximitySensorManager : SensorManager, SensorEventListener {
         return packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_PROXIMITY)
     }
 
-    override fun requestSensorUpdate(context: Context) {
+    override suspend fun requestSensorUpdate(context: Context) {
         latestContext = context
         updateProximitySensor()
     }
 
-    private fun updateProximitySensor() {
+    private suspend fun updateProximitySensor() {
         if (!isEnabled(latestContext, proximitySensor)) {
             return
         }

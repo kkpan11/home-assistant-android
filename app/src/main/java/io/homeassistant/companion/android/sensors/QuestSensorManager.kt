@@ -4,8 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import io.homeassistant.companion.android.common.sensors.SensorManager
+import androidx.core.content.ContextCompat
 import io.homeassistant.companion.android.common.R as commonR
+import io.homeassistant.companion.android.common.sensors.SensorManager
 
 class QuestSensorManager : SensorManager {
     companion object {
@@ -42,12 +43,14 @@ class QuestSensorManager : SensorManager {
         return Build.MODEL == "Quest"
     }
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
-        val intent = context.registerReceiver(
+        val intent = ContextCompat.registerReceiver(
+            context,
             null,
-            IntentFilter("com.oculus.intent.action.MOUNT_STATE_CHANGED")
+            IntentFilter("com.oculus.intent.action.MOUNT_STATE_CHANGED"),
+            ContextCompat.RECEIVER_EXPORTED
         )
         if (intent != null) {
             updateHeadsetMount(context, intent)
@@ -58,7 +61,7 @@ class QuestSensorManager : SensorManager {
         return intent.getBooleanExtra("state", false)
     }
 
-    private fun updateHeadsetMount(context: Context, intent: Intent) {
+    private suspend fun updateHeadsetMount(context: Context, intent: Intent) {
         if (!isEnabled(context, headsetMounted)) {
             return
         }

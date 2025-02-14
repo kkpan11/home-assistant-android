@@ -4,9 +4,9 @@ import android.content.Context
 import android.os.Environment
 import android.os.StatFs
 import android.util.Log
+import io.homeassistant.companion.android.common.R as commonR
 import java.io.File
 import kotlin.math.roundToInt
-import io.homeassistant.companion.android.common.R as commonR
 
 class StorageSensorManager : SensorManager {
     companion object {
@@ -71,14 +71,14 @@ class StorageSensorManager : SensorManager {
         return emptyArray()
     }
 
-    override fun requestSensorUpdate(
+    override suspend fun requestSensorUpdate(
         context: Context
     ) {
         updateInternalStorageSensor(context)
         updateExternalStorageSensor(context)
     }
 
-    private fun updateInternalStorageSensor(context: Context) {
+    private suspend fun updateInternalStorageSensor(context: Context) {
         if (!isEnabled(context, storageSensor)) {
             return
         }
@@ -98,7 +98,7 @@ class StorageSensorManager : SensorManager {
         )
     }
 
-    private fun updateExternalStorageSensor(context: Context) {
+    private suspend fun updateExternalStorageSensor(context: Context) {
         if (!isEnabled(context, externalStorage)) {
             return
         }

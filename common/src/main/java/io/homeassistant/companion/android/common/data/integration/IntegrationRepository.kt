@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 interface IntegrationRepository {
 
     suspend fun registerDevice(deviceRegistration: DeviceRegistration)
-    suspend fun updateRegistration(deviceRegistration: DeviceRegistration)
+    suspend fun updateRegistration(deviceRegistration: DeviceRegistration, allowReregistration: Boolean = true)
     suspend fun getRegistration(): DeviceRegistration
     suspend fun deletePreferences()
 
@@ -35,14 +35,14 @@ interface IntegrationRepository {
     suspend fun isHomeAssistantVersionAtLeast(year: Int, month: Int, release: Int): Boolean
 
     suspend fun getConfig(): GetConfigResponse
-    suspend fun getServices(): List<Service>?
+    suspend fun getServices(): List<Action>?
 
     suspend fun getEntities(): List<Entity<Any>>?
     suspend fun getEntity(entityId: String): Entity<Map<String, Any>>?
     suspend fun getEntityUpdates(): Flow<Entity<*>>?
     suspend fun getEntityUpdates(entityIds: List<String>): Flow<Entity<*>>?
 
-    suspend fun callService(domain: String, service: String, serviceData: HashMap<String, Any>)
+    suspend fun callAction(domain: String, action: String, actionData: HashMap<String, Any>)
 
     suspend fun scanTag(data: HashMap<String, Any>)
 
@@ -62,6 +62,24 @@ interface IntegrationRepository {
         pipelineId: String? = null,
         conversationId: String? = null
     ): Flow<AssistPipelineEvent>?
+
+    suspend fun getLastUsedPipelineId(): String?
+
+    suspend fun getLastUsedPipelineSttSupport(): Boolean
+
+    suspend fun setLastUsedPipeline(pipelineId: String, supportsStt: Boolean)
+
+    /** @return List of border agent IDs added to this device from the server */
+    suspend fun getThreadBorderAgentIds(): List<String>
+
+    /** Set the list of border agent IDs added to this device from the server */
+    suspend fun setThreadBorderAgentIds(ids: List<String>)
+
+    /** @return List of border agent IDs added to this device from a server that no longer exists */
+    suspend fun getOrphanedThreadBorderAgentIds(): List<String>
+
+    /** Clear the list of orphaned border agent IDs, to use after removing them from storage */
+    suspend fun clearOrphanedThreadBorderAgentIds()
 }
 
 @AssistedFactory
